@@ -1,0 +1,2157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>拉群小助手 · 私域拉群进度管理</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    /* 参考 DeepSeek 开放平台的配色：侧栏浅灰 / 主区白 / 卡片浅灰 / 表头再深一档 */
+    --bg: #ffffff;        /* 主区背景 */
+    --side: #f9fafb;      /* 侧栏底：极浅灰 */
+    --card: #f7f8fa;      /* 卡片底：浅灰 */
+    --thead: #eef0f3;     /* 表头：比卡片稍深的灰 */
+    --hover: #eceef1;     /* 悬停 / 侧栏激活块 */
+    --line: #e6e8ec;      /* 边框 / 网格线 */
+    --text: #1f2733;
+    --muted: #8a94a6; --brand: #3b6ef0; --brand-d: #2f5bd0;
+    --orange: #e8890c; --orange-bg: #fdf3e3; --green: #1d9e6c; --green-bg: #e5f6ef;
+    --gray-bg: #eceef1; --red: #d9534f; --red-bg: #fdeceb;
+  }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+
+  /* 布局：整页只有两块 —— 左侧栏 + 右主区。
+     原来的顶栏和工具栏已取消：标题进了侧栏顶部，全局操作进了侧栏底部，搜索进了操作栏。 */
+  .btn { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; color: var(--text); transition: .15s; }
+  .btn:hover { border-color: var(--brand); color: var(--brand); }
+  .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .btn.primary:hover { background: var(--brand-d); }
+  .btn.red { background: var(--red); border-color: var(--red); color: #fff; }
+  .btn.red:hover { filter: brightness(.93); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  /* 侧栏底部那三个全局操作：通栏、左对齐、平时无底无框，悬停才浮出灰底 */
+  .side-act { display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: none; border-radius: 8px; padding: 9px 10px; font-size: 14px; font-family: inherit; color: var(--text); cursor: pointer; text-align: left; transition: .15s; }
+  .side-act:hover { background: var(--hover); }
+  .side-act svg { flex-shrink: 0; color: var(--muted); }
+  .side-act:hover svg { color: var(--brand); }
+  /* 激活项（当前主区正停在对应整页）：灰底 + 图标变蓝 + 文字加粗，与设备列表激活态同一套语言 */
+  .side-act.active { background: var(--hover); font-weight: 600; }
+  .side-act.active svg { color: var(--brand); }
+
+  .layout { display: flex; align-items: flex-start; }
+  /* 侧栏：浅灰底 + 右边一条分隔线，高度锁死一屏。
+     内部三段式 —— 标题（固定）/ 设备列表（撑满、自己滚）/ 底部全局操作（固定）。
+     因为整页没有顶栏了，sticky top 就是 0。 */
+  .sidebar { width: 232px; flex-shrink: 0; position: sticky; top: 0; height: 100vh; overflow: hidden;
+             background: var(--side); border-right: 1px solid var(--line);
+             display: flex; flex-direction: column; padding: 16px 12px 12px; }
+  .side-head { padding: 0 8px 14px; border-bottom: 1px solid var(--line); margin-bottom: 10px; text-align: center; }
+  .side-head h1 { font-size: 16px; font-weight: 700; letter-spacing: .3px; text-align: center; }
+  .side-list { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0 2px; }
+  .side-foot { padding-top: 10px; margin-top: 8px; border-top: 1px solid var(--line); }
+
+  .dev-item { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-radius: 8px; cursor: pointer; font-size: 14px; margin-bottom: 2px; }
+  .dev-item:hover { background: var(--hover); }
+  /* 激活项：灰底块 + 图标变蓝 + 文字加粗（DeepSeek 那种，不用彩色填充） */
+  .dev-item.active { background: var(--hover); font-weight: 600; }
+  .dev-item.active svg { color: var(--brand); }
+  .dev-item svg { flex-shrink: 0; color: var(--muted); }
+  .dev-item .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dev-item .cnt { font-size: 12px; color: var(--muted); background: var(--gray-bg); border-radius: 10px; padding: 1px 8px; flex-shrink: 0; }
+  .dev-item.active .cnt { background: #fff; color: var(--brand-d); }
+  /* 「设备列表」分组头：与底部「导入/导出/库管理」同一套线性图标语言。
+     展开（激活）时图标变蓝，收起时灰色；右侧一个 ▾/▸ 表示可折叠。 */
+  .side-title { display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: none;
+                border-radius: 8px; padding: 9px 10px; font-size: 14px; font-family: inherit; color: var(--text);
+                cursor: pointer; text-align: left; transition: .15s; user-select: none; margin-bottom: 2px; }
+  .side-title:hover { background: var(--hover); }
+  .side-title svg { flex-shrink: 0; color: var(--muted); }
+  .side-title.open svg { color: var(--brand); }
+  .side-title .dt-caret { margin-left: auto; font-size: 10px; color: var(--muted); flex-shrink: 0; }
+  .dev-list-body[hidden] { display: none; }
+  .side-add { margin: 6px 0 0; width: 100%; border: 1px dashed var(--line); background: none; border-radius: 8px; padding: 8px; font-size: 13px; font-family: inherit; color: var(--muted); cursor: pointer;
+              display: flex; align-items: center; justify-content: center; gap: 6px; transition: .15s; }
+  .side-add svg { flex-shrink: 0; }
+  .side-add:hover { border-color: var(--brand); color: var(--brand); }
+  .side-add.active { border-color: var(--brand); color: var(--brand); }
+
+  /* 主区不封顶，完全跟着窗口走（1920 屏上卡片约 1650px）。
+     列宽是百分比，窗口越宽列越宽；窗口收窄时会一并等比收窄。 */
+  main { flex: 1; padding: 16px 20px 24px; min-width: 0; }
+
+  /* 操作栏：左边是设备名 / 提示，右边是一整列（操作 → 统计 → 搜索），整列靠最右 */
+  /* 操作栏：单行卡片 —— 左边「已选N + 选中未分配 + 群名输入框 + 确认 + 取消」，右边统计（最右端）。
+     位置在卡片**下方**，并且吸在窗口底部（bottom: 12px）——往下滚时它一直停在底部上方 12px，
+     滚到页面尽头自然落回原位。只在数据视图存在，所以「只在单设备吸底」是自动满足的。 */
+  .view-bar { display: flex; flex-direction: column; gap: 10px; background: var(--card); border: 1px solid var(--line);
+              border-radius: 12px; padding: 12px 16px; margin-top: 14px;
+              position: sticky; bottom: 12px; z-index: 30; box-shadow: 0 6px 18px rgba(31,39,51,.08); }
+  .view-bar .vb-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .view-bar .vb-sel { font-size: 14px; color: var(--muted); white-space: nowrap; }
+  .view-bar .vb-sel b { color: var(--brand); font-size: 17px; margin: 0 2px; }
+  /* 群名输入框 */
+  .view-bar .vb-input { width: 240px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 14px; font-family: inherit; outline: none; background: #fff; }
+  .view-bar .vb-input:focus { border-color: var(--brand); }
+  /* 图标按钮：输入框有内容时 = 确认（蓝底白勾），没内容时 = 取消（白底灰叉） */
+  .view-bar .vb-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; flex-shrink: 0;
+                       border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--muted); cursor: pointer; transition: .15s; }
+  .view-bar .vb-icon:hover { border-color: var(--brand); color: var(--brand); }
+  .view-bar .vb-icon.ok { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .view-bar .vb-icon.ok:hover { background: var(--brand-d); border-color: var(--brand-d); }
+  /* 「取消」在「群名框为空 + 有勾选」时会变成「批量删除群名」→ 用橙色提示一下它的分量 */
+  .view-bar .vb-icon.warn { color: var(--orange); border-color: #f0d8b4; }
+  .view-bar .vb-icon.warn:hover { background: var(--orange-bg); border-color: var(--orange); color: var(--orange); }
+  /* 「选中未分配」：小号（32px，旁边图标按钮 36px），图标 + 小字，和整条操作栏同一套圆角/描边 */
+  .view-bar .vb-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; flex-shrink: 0;
+                      border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--text);
+                      font-size: 13px; font-family: inherit; white-space: nowrap; cursor: pointer; transition: .15s; }
+  .view-bar .vb-btn svg { color: var(--muted); }
+  .view-bar .vb-btn:hover { border-color: var(--brand); color: var(--brand); }
+  .view-bar .vb-btn:hover svg { color: var(--brand); }
+  /* 激活态：只有按钮变蓝，数据行不做任何高亮 */
+  .view-bar .vb-btn.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .view-bar .vb-btn.on svg { color: #fff; }
+  .view-bar .vb-btn.on:hover { background: var(--brand-d); border-color: var(--brand-d); }
+  .vb-stats-right { margin-left: auto; align-self: center; }
+
+  /* 统计（总人数/本组人数 · 不在库 · 已分配 · 群组），配色与各处保持一致 */
+  .vb-stats { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .vb-stats .sep { color: #ccd3dd; }
+  .vb-stats b { font-weight: 700; color: var(--text); }
+  .vb-stats .v-ool b { color: var(--red); }
+  .vb-stats .v-pending b { color: var(--orange); }
+  .vb-stats .v-group b { color: var(--brand-d); }
+
+  .group-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 16px; overflow: hidden; }
+
+  /* 固定列宽模式：列宽只由表头那行的百分比决定，跟单元格内容完全无关。
+     好处有三：① 长昵称/长群名再也不会把整列撑开、挤扁其他列；
+     ② 双击编辑时列宽数学上不可能变化（此前两次「宽距来回动」都是自动布局引起的）；
+     ③ 窄窗口下不会横向溢出。 */
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  /* 完整网格线：每格都有下边框 + 右边框。
+     最后一列不画右边框 —— 它会和卡片自身的边框贴在一起叠成一条双线。 */
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); font-size: 14px; white-space: nowrap; }
+  th:last-child, td:last-child { border-right: none; }
+  /* 超长文字就地省略号收尾 —— 只是「显示」被截短，DOM 里仍是完整内容：
+     悬停看 title、双击编辑看全名、框选复制粘贴拿到的也是全名。 */
+  th, td { overflow: hidden; text-overflow: ellipsis; }
+  /* 表头一层浅底（与卡片头同色），有了网格线之后更容易一眼分清表头和数据 */
+  th { color: var(--muted); font-weight: 500; font-size: 12px; background: var(--thead); }
+  /* 昵称/群名称列：宽度由表头的百分比锁定，超长内容由上面的省略号规则收尾。
+     千万不要再往 td.nick 或它的子元素上加 max-width —— 自动布局下它不生效，
+     固定布局下更是多余，只会在进入编辑态时引起列宽跳动。 */
+  td.nick { white-space: nowrap; }
+  td.groupname { font-weight: 600; color: var(--brand-d); }
+  tr:hover td { background: #f7f9fd; }
+  tr.row-done td { color: var(--muted); background: #fbfdfb; }
+  td.date { color: var(--muted); }
+  td[data-field] { cursor: text; }
+  td[data-field]:hover { background: #eef3ff; }
+  /* 编辑态：单元格内边距归零，让输入框原样铺满整格（尺寸与文字位置都不动，内边距由输入框自己承担） */
+  td.editing { padding: 0; }
+  .cell-edit { display: block; box-sizing: border-box; width: 100%; height: 100%; min-width: 0; font: inherit; font-size: 14px; border: none; border-radius: 0; padding: 10px 12px; outline: 2px solid var(--brand); outline-offset: -2px; background: #fff; }
+
+  .badge { display: inline-block; font-size: 12px; border-radius: 10px; padding: 2px 10px; }
+  .badge.none { background: var(--gray-bg); color: var(--muted); }
+  .badge.pending { background: var(--orange-bg); color: var(--orange); }
+  .badge.done { background: var(--green-bg); color: var(--green); }
+  /* 「不在库」：数据ID 不在名单库里时叠加显示。判定是实时算的，不写进数据 —— 名单库更新后旧数据会自动跟着变。
+     只在「未分配」的行上出现（已进入流程的行不再判库）。 */
+  .badge.outlib { background: var(--red-bg); color: var(--red); }
+
+  /* 行尾删除列：垃圾桶图标，平时灰色，悬停变红。
+     勾选列 / 删除列只放一个小图标，内边距收窄，避免被省略号补「…」。 */
+  /* 勾选列 / 删除列：内边距收窄 + 内容居中，避免复选框贴左、或被省略号补「…」。 */
+  th.chk, td.chk, th.col-del, td.col-del { padding-left: 4px; padding-right: 4px; text-align: center; }
+  .col-del { text-align: center; }
+  .row-del { border: none; background: none; cursor: pointer; color: var(--muted); padding: 3px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; transition: .15s; }
+  .row-del:hover { color: var(--red); background: var(--red-bg); }
+  th.col-del .row-del { color: var(--muted); }
+
+  .done-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #fff; padding-right: 10px; }
+  .done-toggle { flex: 1; display: block; text-align: left; border: none; background: none; padding: 8px 10px; font-size: 12px; color: var(--muted); cursor: pointer; }
+  .done-toggle:hover { color: var(--brand); }
+  .done-act { border: none; background: none; cursor: pointer; font-size: 12px; color: var(--muted); padding: 3px 8px; border-radius: 5px; white-space: nowrap; }
+  .done-act:hover { background: #e7ecf5; color: var(--brand); }
+  .done-act.del:hover { color: var(--red); background: #fdeceb; }
+  tr.done-divider td { padding: 0; }
+  .done-wrap.collapsed { display: none; }
+
+  .empty { text-align: center; color: var(--muted); padding: 70px 0; }
+  .empty .big { font-size: 44px; margin-bottom: 12px; }
+  .empty-group { padding: 16px; color: var(--muted); font-size: 13px; text-align: center; }
+
+  /* 自定义弹窗 */
+  .modal-mask { position: fixed; inset: 0; background: rgba(20,28,42,.42); display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
+  .modal-mask.show { display: flex; }
+  .modal-card { background: #fff; border-radius: 14px; width: 100%; max-width: 440px; box-shadow: 0 18px 50px rgba(20,30,50,.28); overflow: hidden; }
+  .modal-head { padding: 18px 22px 0; font-size: 16px; font-weight: 700; }
+  .modal-body { padding: 12px 22px 4px; font-size: 14px; color: var(--text); line-height: 1.75; }
+  .modal-body .muted { color: var(--muted); font-size: 13px; }
+  .modal-body b.n { color: var(--brand); font-weight: 700; }
+  .modal-input { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; font-size: 14px; outline: none; margin-top: 10px; }
+  .modal-input:focus { border-color: var(--brand); }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 18px 22px; }
+  .dropzone { border: 1.5px dashed var(--line); border-radius: 12px; padding: 30px 16px; text-align: center; color: var(--muted); cursor: pointer; transition: .15s; background: #fafbfe; }
+  .dropzone:hover { border-color: var(--brand); color: var(--brand); }
+  .dropzone.over { border-color: var(--brand); background: #eef3ff; color: var(--brand); }
+  .dropzone .dz-big { font-size: 32px; display: block; margin-bottom: 10px; }
+  .dropzone .dz-sub { font-size: 12px; margin-top: 6px; }
+  /* 导入页：待导入文件列表（可逐个 × 掉）+ 确定/取消 */
+  .imp-list { margin-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+  .imp-item { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--line);
+              border-radius: 8px; padding: 9px 12px; font-size: 13px; }
+  .imp-item .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .imp-item .sz { flex-shrink: 0; color: var(--muted); font-size: 12px; }
+  .imp-item .imp-x { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+                     padding: 0; flex-shrink: 0; border: none; background: none; border-radius: 6px;
+                     color: var(--muted); cursor: pointer; transition: .15s; }
+  .imp-item .imp-x:hover { background: var(--gray-bg); color: var(--red); }
+  .imp-item .imp-x svg { width: 14px; height: 14px; }
+  .imp-acts { margin-top: 18px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .imp-acts.muted { color: var(--muted); font-size: 13px; }
+
+  /* 提示条：带「撤销」按钮时横排显示。
+     整条始终 pointer-events:none —— 绝不挡住底下的工具栏按钮；
+     只有「撤销」按钮自己打开 auto，所以点得到。
+     悬停暂停倒计时改用全局 mousemove 判断指针是否落在提示条矩形内（见 bindToastHover），
+     这样既能暂停，又不会拦截点击。 */
+  .toast { position: fixed; top: 76px; left: 50%; transform: translateX(-50%); background: #232a36; color: #fff; padding: 10px 22px; border-radius: 8px; font-size: 13px; z-index: 100; opacity: 0; transition: opacity .25s; pointer-events: none; display: flex; align-items: center; gap: 16px; max-width: calc(100vw - 40px); }
+  .toast.show { opacity: 1; }
+  .toast #toastMsg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .toast-act { pointer-events: auto; flex-shrink: 0; border: 1px solid rgba(255, 255, 255, .5); background: rgba(255, 255, 255, .14); color: #fff; font: inherit; font-size: 13px; padding: 4px 14px; border-radius: 6px; cursor: pointer; }
+  .toast-act:hover { background: rgba(255, 255, 255, .3); }
+  .toast-act[hidden] { display: none; }
+
+  /* 「库管理」弹窗里的三个来源选项 */
+  .rs-opt { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; cursor: pointer; transition: .15s; }
+  .rs-opt:last-child { margin-bottom: 0; }
+  .rs-opt:hover { border-color: #c9d6f0; background: #fafbfe; }
+  .rs-opt.on { border-color: var(--brand); background: #f4f7ff; }
+  .rs-radio { flex-shrink: 0; width: 16px; height: 16px; border: 1.5px solid #c2cbdb; border-radius: 50%; margin-top: 2px; position: relative; box-sizing: border-box; }
+  .rs-opt.on .rs-radio { border-color: var(--brand); }
+  .rs-opt.on .rs-radio::after { content: ""; position: absolute; left: 3px; top: 3px; right: 3px; bottom: 3px; border-radius: 50%; background: var(--brand); }
+  .rs-opt b { font-size: 14px; font-weight: 600; }
+  .rs-sub { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.7; }
+  .rs-btns { margin-top: 9px; display: flex; gap: 8px; }
+  .rs-btns .btn { padding: 5px 12px; font-size: 12px; }
+  input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color: var(--brand); }
+
+  /* 主区整页视图（导入 / 导出 / 库管理）：替代原来的居中小弹窗。
+     点侧栏按钮时，主区从数据表切换成下面这一整张卡片，左上角有「返回」。 */
+  /* 主区整页视图（导入 / 导出 / 库管理 / 管理设备）：不再铺满主区，
+     而是一张居中的、宽度适中的卡片。 */
+  /* 整页视图（导入/导出/数据库/管理设备/新增设备）：卡片在可用区域里**垂直居中** */
+  .page-wrap { max-width: 620px; margin: 0 auto; min-height: calc(100vh - 40px); display: flex; align-items: center; }
+  .page-card { flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .page-head { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--thead); }
+  .page-title { font-weight: 700; font-size: 15px; color: var(--text); }
+  .page-body { padding: 24px 20px; }
+  .page-body p { line-height: 1.9; }
+  .page-body .muted { color: var(--muted); font-size: 13px; }
+  .page-body b.n { color: var(--brand); font-weight: 700; }
+  /* 带图标的按钮（数据备份页用） */
+  .page-body .btn-ico { display: inline-flex; align-items: center; gap: 7px; }
+  .page-body .bk-sep { margin: 22px 0 16px; border-top: 1px dashed var(--line); }
+  .page-body .rs-opt { background: #fff; }
+  /* 管理设备：每行一个设备 + 拖拽手柄 + 改名/删除（排序靠拖拽，不再用上下箭头） */
+  .mg-row { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-bottom: 8px; }
+  .mg-row[draggable="true"] { cursor: grab; }
+  .mg-row.dragging { opacity: .4; }
+  .mg-row.drag-over { box-shadow: inset 0 2px 0 var(--brand); }
+  .mg-grip { flex-shrink: 0; display: flex; color: var(--muted); cursor: grab; }
+  .mg-grip:hover { color: var(--brand); }
+  .mg-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .mg-row .cnt { font-size: 12px; color: var(--muted); background: var(--gray-bg); border-radius: 10px; padding: 1px 8px; flex-shrink: 0; }
+  .mg-row .btn { padding: 5px 10px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<!-- 隐藏的文件选择框：必须放在静态位置。
+     侧栏和主区都会随列表重绘，放里面的话重绘后监听就失效了。 -->
+<input type="file" id="fileInput" accept=".xls,.html,.htm,.csv,.txt" multiple hidden>
+<input type="file" id="rosterFile" accept=".csv,.txt" hidden>
+<input type="file" id="backupFile" accept=".json,application/json" hidden>
+
+<div class="layout">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main id="main"></main>
+</div>
+
+<!-- 自定义弹窗（导出/删除/导入/新增设备共用） -->
+<div class="modal-mask" id="modalMask">
+  <div class="modal-card">
+    <div class="modal-head" id="modalTitle"></div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot" id="modalFoot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span id="toastMsg"></span><button class="toast-act" id="toastUndo" hidden>撤销</button></div>
+
+<script>
+(function () {
+  'use strict';
+  var LS_KEY = 'lq_helper_rows_v2';
+  var LS_DEV = 'lq_helper_dev_order_v2';
+  var LS_MAN = 'lq_helper_dev_manual_v2';
+  var LS_UI  = 'lq_helper_ui_v2';
+
+  /** 数据行: {k, id, nick, device, dtype, date, group, status} status: none|pending|done
+   *  k = 行内部唯一键（稳定，不随 id 修改而变），用于勾选与拖拽 */
+  var rows = [];
+  var selected = {};          // k -> true
+  var deviceOrder = [];       // 设备显示顺序
+  var devManual = {};         // 手动新增的设备名（用于保留空分组）
+  // 没有「全部视图」了 —— 主区永远停在某一个设备上。空串表示「还没定」，
+  // render() 里会兜底成 deviceOrder[0]，所以任何地方都不要再用 '__all__'。
+  var filterDevice = '';
+  // 直接筛选（选择框即时生效）+ 精准搜索（输入即时生效）：
+  //   selDevice = 设备名筛选（'' 表示不限）—— 筛选行已随「全部视图」一起去掉，保留变量仅为兼容 matchFilters
+  //   selTag    = 状态筛选（'' 全部 / none / pending / done / outlib）—— 同上
+  //   searchQ   = 精准搜索词（与 数据ID/昵称/群名称 完全相等才命中）—— 同上
+  var selDevice = '';
+  var selTag = '';
+  var searchQ = '';
+  var doneCollapsed = {};     // device -> true(折叠)
+  var devListCollapsed = false; // 侧栏「设备列表」是否收起
+  var mainView = 'data';      // 主区当前视图：data | import | export | roster | manage | addDev | backup
+  var PICK_N = 38;            // 「选中未分配」按钮一次自下而上选多少条（不足则全取）
+  // 不再需要搜索防抖定时器（筛选行已随「全部视图」一起删除）
+  var groupInputVal = '';     // 群名输入框的值（重绘时回填，避免输入内容丢失）
+  var newDevVal = '';         // 「新增设备」页里输入框的值（同样要回填）
+  var uid = 0;
+
+  // ---------- 持久化 ----------
+  // 只写 UI 状态这一个键（体积小）—— 供输入框实时保存使用，避免为了记一个数字把几千条 rows 重新序列化
+  function saveUI() {
+    try { localStorage.setItem(LS_UI, JSON.stringify({ doneCollapsed: doneCollapsed, devListCollapsed: devListCollapsed })); } catch (e) {}
+  }
+  function save() {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(rows));
+      localStorage.setItem(LS_DEV, JSON.stringify(deviceOrder));
+      localStorage.setItem(LS_MAN, JSON.stringify(devManual));
+      saveUI();
+    } catch (e) {}
+  }
+  function load() {
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      if (raw) rows = JSON.parse(raw) || [];
+      var dv = localStorage.getItem(LS_DEV);
+      if (dv) deviceOrder = JSON.parse(dv) || [];
+      var dm = localStorage.getItem(LS_MAN);
+      if (dm) devManual = JSON.parse(dm) || {};
+      var ui = localStorage.getItem(LS_UI);
+      if (ui) { var u = JSON.parse(ui) || {}; doneCollapsed = u.doneCollapsed || {}; devListCollapsed = !!u.devListCollapsed; }
+    } catch (e) { rows = []; deviceOrder = []; devManual = {}; }
+    // 补历史数据缺失的 k
+    rows.forEach(function (r) { if (!r.k) r.k = 'r' + (++uid); else { var n = parseInt(String(r.k).slice(1), 10); if (n > uid) uid = n; } });
+  }
+
+  // ---------- 工具 ----------
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function todayStr() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  // ---------- 提示条（可带「撤销」）----------
+  // 普通提示 2.6 秒掠过；带撤销按钮的停留 6 秒 —— 得留出按下去的时间。
+  // 鼠标悬停在提示条上时暂停倒计时（犹豫的时候不会突然消失）。
+  // 同时只存在一条提示：新提示会顶掉旧的，连带把旧的「撤销」一并作废（正好符合"只撤销上一次"）。
+  var TOAST_MS = 2600;
+  var TOAST_ACT_MS = 6000;
+  var toastTimer = null, toastDeadline = 0, toastLeft = 0;
+  function hideToast() {
+    clearTimeout(toastTimer); toastTimer = null;
+    toastLeft = 0;
+    $('toast').classList.remove('show');
+    var b = $('toastUndo');
+    if (b) { b.hidden = true; b.onclick = null; }
+  }
+  function toast(msg, undoFn) {
+    clearTimeout(toastTimer); toastTimer = null;
+    $('toastMsg').textContent = msg;
+    var b = $('toastUndo');
+    if (undoFn) { b.hidden = false; b.onclick = undoFn; } else { b.hidden = true; b.onclick = null; }
+    $('toast').classList.add('show');
+    toastLeft = undoFn ? TOAST_ACT_MS : TOAST_MS;
+    toastDeadline = Date.now() + toastLeft;
+    toastTimer = setTimeout(hideToast, toastLeft);
+  }
+  (function bindToastHover() {
+    var t = $('toast');
+    // 用全局 mousemove 判断指针是否落在提示条矩形内。
+    // 为什么不直接用 mouseenter：提示条是 pointer-events:none（不能挡住底下工具栏的点击），
+    // 自己收不到鼠标事件。这样既保住「悬停暂停」，又不拦点击 —— 两全。
+    document.addEventListener('mousemove', function (e) {
+      if (!t.classList.contains('show')) return;
+      var r = t.getBoundingClientRect();
+      var inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+      if (inside) {
+        if (toastTimer) { toastLeft = Math.max(0, toastDeadline - Date.now()); clearTimeout(toastTimer); toastTimer = null; }
+      } else if (!toastTimer && toastLeft > 0) {
+        toastDeadline = Date.now() + toastLeft;
+        toastTimer = setTimeout(hideToast, toastLeft);
+      }
+    });
+  })();
+
+  // ---------- 自定义弹窗 ----------
+  var modalOkFn = null;
+  var modalHasOk = false;         // 当前弹窗是否有「确定」按钮（无确定按钮时回车不生效）
+  function openModal(opt) {
+    $('modalTitle').textContent = opt.title || '';
+    var body = opt.bodyHtml || '';
+    if (opt.input) {
+      body += '<input class="modal-input" id="modalInput" placeholder="' + esc(opt.input.placeholder || '') + '" value="' + esc(opt.input.value || '') + '">';
+    }
+    $('modalBody').innerHTML = body;
+    var foot = '<button class="btn" data-modal="cancel">' + esc(opt.cancelText || '取消') + '</button>';
+    if (!opt.noOk) foot += '<button class="btn ' + (opt.okRed ? 'red' : 'primary') + '" data-modal="ok">' + esc(opt.okText || '确定') + '</button>';
+    $('modalFoot').innerHTML = foot;
+    modalOkFn = opt.onOk || null;
+    modalHasOk = !opt.noOk;
+    $('modalMask').classList.add('show');
+    var inp = $('modalInput');
+    if (inp) { inp.focus(); if (inp.select) { try { inp.select(); } catch (e) {} } }
+  }
+  function closeModal() { $('modalMask').classList.remove('show'); $('modalBody').removeAttribute('data-roster'); modalOkFn = null; modalHasOk = false; }
+  // 注：data-roster 是弹窗版库管理留下的标记，现在只有这句清理、没人再设置它 —— 留着无害，不动了。
+  function confirmModal() {
+    var inp = $('modalInput');
+    var fn = modalOkFn;
+    if (inp) {
+      var v = inp.value.trim();
+      if (!v) { inp.focus(); return; }        // 输入不能为空
+      closeModal(); if (fn) fn(v);
+    } else {
+      closeModal(); if (fn) fn(null);
+    }
+  }
+  function statusName(s) { return s === 'pending' ? '已分配' : s === 'done' ? '已完成' : '未分配'; }
+  function findRow(k) { for (var i = 0; i < rows.length; i++) if (rows[i].k === k) return rows[i]; return null; }
+  function shortDate(s) {
+    if (!s) return '';
+    var m = String(s).match(/(\d{4})[-\/年.](\d{1,2})[-\/月.](\d{1,2})/);
+    if (m) return (+m[2]) + '/' + (+m[3]);
+    return s.length > 8 ? s.slice(0, 8) : s;
+  }
+  // 昵称这类长文本的限宽，改由「表格固定列宽 + CSS 省略号」处理（见 CSS 里的 table 规则），
+  // 这里不再对文本做任何截断 —— DOM 里始终是完整昵称。
+
+
+  // ---------- 名单库 & 「不在库」判定 ----------
+  // 「不在库」= 该行**还是「未分配」**、且它的 数据ID 不在名单库里。
+  //   · 判定是**实时算**的，不写进数据 —— 名单库更新后，旧数据的标记会自动跟着变，不用重新导入。
+  //   · 已经进入流程的行（进行中 / 已完成）不再判库。
+  //   · ID 比对**不区分大小写**（名单库里有含字母的 ID，如 wm66666666miao）。
+  //
+  // 名单库来源三种（互斥，在「库管理」里切换）：
+  //   cloud = 使用云端名单库：每次打开比对版本号，有新版才下载 → 存 IndexedDB
+  //   local = 本地上传名单库：手动选文件，与已有库【合并】（重复覆盖、新增新增）
+  //   none  = 不使用：关闭「在库」检测
+  //
+  // 云端地址用 GitHub Pages（raw.githubusercontent.com 在国内不通，不能用）；
+  // 客户端用 <script src> 加载而**不是 fetch** —— 工具是 file:// 双击打开的，fetch 会被跨域拦死。
+  var ROSTER_CLOUD = {
+    page: 'https://cvrtgbp2dn-code.github.io/lq-roster/',
+    cdn: 'https://fastly.jsdelivr.net/gh/cvrtgbp2dn-code/lq-roster@main/'   // 备用源
+  };
+  var ROSTER_MODES = ['cloud', 'local', 'none'];
+  var ROSTER_MODE = 'cloud';                    // 默认：使用云端名单库
+  var rosterInfo = { ids: '', version: '', updatedAt: 0 };   // 当前生效的那一份
+  var rosterSet = new Set();
+  var rosterSyncing = false;
+  var rosterEpoch = 0;   // 每次切换来源 +1；下载回来时若纪元变了就丢弃，避免「下载中途切走」把数据写错槽位
+
+  // ---------- IndexedDB（localStorage 只有 5MB，装不下 40 万条）----------
+  var IDB_NAME = 'lq_helper_roster', IDB_STORE = 'kv', idbPromise = null;
+  function idbOpen() {
+    if (idbPromise) return idbPromise;
+    idbPromise = new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error('no indexedDB')); return; }
+      var req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore(IDB_STORE); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error || new Error('idb open fail')); };
+    });
+    return idbPromise;
+  }
+  function idbOp(mode, fn) {
+    return idbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(IDB_STORE, mode);
+        var r = fn(tx.objectStore(IDB_STORE));
+        r.onsuccess = function () { resolve(r.result); };
+        r.onerror = function () { reject(r.error); };
+      });
+    });
+  }
+  function idbGet(k) { return idbOp('readonly', function (s) { return s.get(k); }); }
+  function idbPut(k, v) { return idbOp('readwrite', function (s) { return s.put(v, k); }); }
+  function idbDel(k) { return idbOp('readwrite', function (s) { return s.delete(k); }); }
+  function slotKey(mode) { return mode === 'cloud' ? 'src_cloud' : 'src_local'; }
+
+  // 把 ids 长字符串建成内存索引（40 万条约 120ms，无需进度条）
+  function applyRoster() {
+    var s = new Set();
+    if (rosterInfo.ids) {
+      var arr = rosterInfo.ids.split('\n');
+      for (var i = 0; i < arr.length; i++) {
+        var v = arr[i].trim();
+        if (v) s.add(v.toLowerCase());
+      }
+    }
+    rosterSet = s;
+  }
+  function rosterActive() { return ROSTER_MODE !== 'none' && rosterSet.size > 0; }
+  function outOfLib(r) {
+    if (!rosterActive()) return false;                     // 不使用 / 库为空 → 一律视为在库
+    if (r.status !== 'none') return false;                 // 已进入流程的不再判库
+    return !rosterSet.has(String(r.id == null ? '' : r.id).trim().toLowerCase());
+  }
+  // 状态列的展示：不丢进 status，而是渲染时算出来
+  function badgeOf(r) {
+    if (outOfLib(r)) return { cls: 'outlib', text: '不在库' };
+    return { cls: r.status, text: statusName(r.status) };
+  }
+  function fmtTime(ts) {
+    if (!ts) return '—';
+    var d = new Date(ts);
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  // 启动时读取本机缓存的名单库
+  function initRoster() {
+    return Promise.all([idbGet('mode'), idbGet('src_cloud'), idbGet('src_local')]).then(function (r) {
+      if (r[0] && ROSTER_MODES.indexOf(r[0]) !== -1) ROSTER_MODE = r[0];
+      var d = ROSTER_MODE === 'cloud' ? r[1] : (ROSTER_MODE === 'local' ? r[2] : null);
+      if (d) rosterInfo = { ids: d.ids || '', version: d.version || '', updatedAt: d.updatedAt || 0 };
+      applyRoster();
+    }).catch(function () { /* IndexedDB 不可用时降级为内存态，不影响其它功能 */ });
+  }
+  function saveCurrentSlot() {
+    if (ROSTER_MODE === 'none') return Promise.resolve();
+    var d = { ids: rosterInfo.ids, version: rosterInfo.version, updatedAt: rosterInfo.updatedAt };
+    return idbPut(slotKey(ROSTER_MODE), d).catch(function () {});
+  }
+
+  // ---------- 云端名单库 ----------
+  function loadScript(url, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      var done = false;
+      function fin(ok, err) {
+        if (done) return; done = true;
+        if (!ok) { try { s.parentNode.removeChild(s); } catch (e) {} }
+        if (ok) resolve(); else reject(err);
+      }
+      s.src = url;
+      s.onload = function () { fin(true); };
+      s.onerror = function () { fin(false, new Error('load fail')); };
+      document.head.appendChild(s);
+      setTimeout(function () { fin(false, new Error('timeout')); }, timeoutMs || 60000);
+    });
+  }
+  // 返回 {updated, version, count, ms} 或 null（不需要更新 / 全部源都失败）
+  function cloudSync() {
+    if (ROSTER_MODE !== 'cloud' || rosterSyncing) return Promise.resolve(null);
+    rosterSyncing = true;
+    var ep = rosterEpoch;
+    function stale() { return ep !== rosterEpoch || ROSTER_MODE !== 'cloud'; }
+    var bases = [ROSTER_CLOUD.page, ROSTER_CLOUD.cdn];
+    function finish(v) { rosterSyncing = false; return v; }
+    function tryBase(i) {
+      if (i >= bases.length) return Promise.resolve(finish(null));
+      if (stale()) return Promise.resolve(finish(null));
+      var base = bases[i], ver = '', t0 = Date.now();
+      return loadScript(base + 'version.js?t=' + Date.now(), 30000).then(function () {
+        if (stale()) return finish(null);
+        ver = String(window.__ROSTER_VERSION__ || '');
+        if (!ver) throw new Error('no version');
+        if (ver === rosterInfo.version && rosterInfo.ids) return finish(null);   // 已是最新
+        window.__ROSTER__ = null;
+        return loadScript(base + 'roster.js?v=' + encodeURIComponent(ver), 180000).then(function () {
+          var txt = window.__ROSTER__;
+          if (!txt) throw new Error('empty roster');
+          if (stale()) return finish(null);                    // 期间用户切走了 → 整包丢弃
+          rosterInfo.ids = txt;
+          rosterInfo.version = ver;
+          rosterInfo.updatedAt = Date.now();
+          applyRoster();
+          return saveCurrentSlot().then(function () {
+            return finish({ updated: true, version: ver, count: rosterSet.size, ms: Date.now() - t0, base: base });
+          });
+        });
+      }).catch(function () { return tryBase(i + 1); });
+    }
+    return tryBase(0);
+  }
+
+  // ---------- 本地上传名单库（合并：重复覆盖、新增新增）----------
+  // 支持 .csv（取第一列）和 .txt（整行即一个 ID），自动识别 UTF-8 / GBK
+  function parseRosterText(text) {
+    var out = [], arr = String(text).split(/\r?\n/);
+    for (var i = 0; i < arr.length; i++) {
+      var line = arr[i];
+      if (!line) continue;
+      var v = line.split(',')[0].replace(/^\uFEFF/, '').replace(/^"|"$/g, '').trim();
+      if (v) out.push(v);
+    }
+    return out;
+  }
+  function mergeIntoRoster(newIds) {
+    var set = new Set();
+    if (rosterInfo.ids) {
+      var old = rosterInfo.ids.split('\n');
+      for (var i = 0; i < old.length; i++) { var v = old[i].trim(); if (v) set.add(v.toLowerCase()); }
+    }
+    var before = set.size;
+    for (var j = 0; j < newIds.length; j++) { var w = newIds[j].toLowerCase(); if (w) set.add(w); }
+    rosterInfo.ids = Array.from(set).join('\n');
+    rosterInfo.version = '';
+    rosterInfo.updatedAt = Date.now();
+    return { total: set.size, added: set.size - before, dup: newIds.length - (set.size - before) };
+  }
+
+  // ---------- 库管理弹窗 ----------
+  function refreshRosterModal() {
+    // 库管理现在是主区整页视图，重绘整页即可
+    if (mainView === 'roster') render();
+  }
+  function rosterBodyHtml() {
+    var h = '';
+    // ① 云端
+    var cloudSub;
+    if (ROSTER_MODE === 'cloud' && rosterSet.size) {
+      cloudSub = '<span style="color:var(--green)">已连接</span> · <b>' + rosterSet.size.toLocaleString() +
+        '</b> 条 · 更新于 ' + fmtTime(rosterInfo.updatedAt);
+    } else if (ROSTER_MODE === 'cloud') {
+      cloudSub = rosterSyncing ? '正在下载名单库…'
+        : '<span style="color:var(--orange)">尚未取得名单库</span>（联网后重新打开工具会自动下载）';
+    } else {
+      cloudSub = '每次打开自动比对版本号，有新版才下载';
+    }
+    h += '<div class="rs-opt' + (ROSTER_MODE === 'cloud' ? ' on' : '') + '" data-act="rsMode" data-mode="cloud">' +
+      '<span class="rs-radio"></span><div style="flex:1"><b>使用云端名单库</b>' +
+      '<div class="rs-sub">' + cloudSub + '</div></div></div>';
+    // ② 本地
+    var localSub = (ROSTER_MODE === 'local' && rosterSet.size)
+      ? '当前 <b>' + rosterSet.size.toLocaleString() + '</b> 条 · 更新于 ' + fmtTime(rosterInfo.updatedAt)
+      : '选择 .csv / .txt 文件导入；重复的数据ID会覆盖，新增的会追加';
+    h += '<div class="rs-opt' + (ROSTER_MODE === 'local' ? ' on' : '') + '" data-act="rsMode" data-mode="local">' +
+      '<span class="rs-radio"></span><div style="flex:1"><b>本地上传名单库</b>' +
+      '<div class="rs-sub">' + localSub + '</div>' +
+      '<div class="rs-btns"><button class="btn" data-act="rsPick">选择文件…</button>' +
+      '<button class="btn" data-act="rsClear"' + (rosterSet.size ? '' : ' disabled') + '>清空名单库</button>' +
+      '</div></div></div>';
+    // ③ 不使用
+    h += '<div class="rs-opt' + (ROSTER_MODE === 'none' ? ' on' : '') + '" data-act="rsMode" data-mode="none">' +
+      '<span class="rs-radio"></span><div style="flex:1"><b>不使用</b>' +
+      '<div class="rs-sub">关闭「在库」检测，所有数据都按正常流程走</div></div></div>';
+    return h;
+  }
+  // 切换来源（互斥）。先把当前这份存进它自己的槽位，再读取目标槽位 —— 来回切换不丢数据、不重复下载。
+  function setRosterMode(mode) {
+    if (ROSTER_MODES.indexOf(mode) === -1 || mode === ROSTER_MODE) return Promise.resolve();
+    var oldMode = ROSTER_MODE, oldData = { ids: rosterInfo.ids, version: rosterInfo.version, updatedAt: rosterInfo.updatedAt };
+    ROSTER_MODE = mode;
+    rosterEpoch++;        // 让还在飞行中的云端下载作废
+    rosterSyncing = false;
+    var chain = (oldMode === 'none') ? Promise.resolve() : idbPut(slotKey(oldMode), oldData).catch(function () {});
+    return chain.then(function () { return idbPut('mode', mode).catch(function () {}); })
+      .then(function () { return mode === 'none' ? null : idbGet(slotKey(mode)).catch(function () { return null; }); })
+      .then(function (d) {
+        rosterInfo = d ? { ids: d.ids || '', version: d.version || '', updatedAt: d.updatedAt || 0 }
+                       : { ids: '', version: '', updatedAt: 0 };
+        applyRoster();
+        render();                        // 必须重绘：切换来源会让红标整体变化
+      }).catch(function () {
+        rosterInfo = { ids: '', version: '', updatedAt: 0 };
+        applyRoster();
+        render();
+      });
+  }
+  function pickRosterFile() {
+    var go = (ROSTER_MODE === 'local') ? Promise.resolve() : setRosterMode('local');
+    go.then(function () {
+      refreshRosterModal();
+      var fi = $('rosterFile');
+      fi.value = '';
+      fi.click();
+    });
+  }
+  function onRosterFileChosen(files) {
+    var f = files && files[0];
+    if (!f) return;
+    var fr = new FileReader();
+    fr.onload = function () {
+      var ids = parseRosterText(decodeBuffer(fr.result));
+      if (!ids.length) { toast('这个文件里没有读到任何数据ID'); return; }
+      // 先把合并前的样子存下来，再动手改 —— 顺序反了就没得撤了
+      var before = { ids: rosterInfo.ids, version: rosterInfo.version, updatedAt: rosterInfo.updatedAt };
+      var r = mergeIntoRoster(ids);
+      saveCurrentSlot();
+      applyRoster();
+      render();
+      refreshRosterModal();
+      toast('名单库已更新：共 ' + r.total.toLocaleString() + ' 条（新增 ' + r.added.toLocaleString() +
+        '，重复 ' + r.dup.toLocaleString() + '）', function () {
+        rosterInfo = { ids: before.ids, version: before.version, updatedAt: before.updatedAt };
+        saveCurrentSlot(); applyRoster(); render(); refreshRosterModal();
+        toast('已撤销导入');
+      });
+    };
+    fr.readAsArrayBuffer(f);
+  }
+  function clearRoster() {
+    if (!rosterSet.size) { toast('名单库本来就是空的'); return; }
+    var n = rosterSet.size;
+    var before = { ids: rosterInfo.ids, version: rosterInfo.version, updatedAt: rosterInfo.updatedAt };
+    rosterInfo = { ids: '', version: '', updatedAt: 0 };
+    rosterSet = new Set();
+    idbDel(slotKey(ROSTER_MODE)).catch(function () {});
+    render(); refreshRosterModal();
+    toast('已清空名单库（' + n.toLocaleString() + ' 条）', function () {
+      rosterInfo = before;
+      saveCurrentSlot(); applyRoster(); render(); refreshRosterModal();
+      toast('已撤销清空');
+    });
+  }
+
+  // ---------- 导入解析 ----------
+  function parseHtmlTable(text) {
+    var doc = new DOMParser().parseFromString(text, 'text/html');
+    var trs = doc.querySelectorAll('table tr');
+    var out = [], colMap = null;
+    for (var i = 0; i < trs.length; i++) {
+      var tds = trs[i].querySelectorAll('td,th');
+      if (!tds.length) continue;
+      var cells = [];
+      for (var j = 0; j < tds.length; j++) cells.push(tds[j].textContent.trim());
+      var joined = cells.join('|');
+      if (joined.indexOf('数据ID') !== -1) {
+        colMap = {};
+        for (var k = 0; k < cells.length; k++) {
+          var h = cells[k];
+          if (h.indexOf('类型名称') !== -1 || h.indexOf('设备') !== -1) colMap.device = k;
+          else if (h.indexOf('昵称') !== -1) colMap.nick = k;
+          else if (h.indexOf('数据ID') !== -1 || h === 'ID') colMap.id = k;
+          else if (h.indexOf('数据类型') !== -1) colMap.dtype = k;
+          else if (h.indexOf('时间') !== -1 || h.indexOf('日期') !== -1) colMap.date = k;
+        }
+        if (colMap.id == null) colMap.id = 2;
+        if (colMap.nick == null) colMap.nick = 1;
+        if (colMap.device == null) colMap.device = 0;
+        if (colMap.date == null) colMap.date = 4;
+        continue;
+      }
+      if (!colMap) colMap = { device: 0, nick: 1, id: 2, dtype: 3, date: 4 };
+      var idVal = (cells[colMap.id] || '').trim();
+      if (!idVal) continue;
+      out.push({
+        id: idVal,
+        nick: (cells[colMap.nick] || '').trim(),
+        device: (cells[colMap.device] || '').trim() || '未知设备',
+        dtype: colMap.dtype != null ? (cells[colMap.dtype] || '').trim() : '',
+        date: colMap.date != null ? (cells[colMap.date] || '').trim() : ''
+      });
+    }
+    return out;
+  }
+
+  function parseCsv(text) {
+    var lines = text.split(/\r?\n/).filter(function (l) { return l.trim(); });
+    var out = [], colMap = null;
+    lines.forEach(function (line) {
+      var cells = line.split(/[,\t]/).map(function (s) { return s.trim().replace(/^"|"$/g, ''); });
+      var joined = cells.join('|');
+      if (joined.indexOf('数据ID') !== -1) {
+        colMap = {};
+        cells.forEach(function (h, k) {
+          if (h.indexOf('类型名称') !== -1 || h.indexOf('设备') !== -1) colMap.device = k;
+          else if (h.indexOf('昵称') !== -1) colMap.nick = k;
+          else if (h.indexOf('数据ID') !== -1) colMap.id = k;
+          else if (h.indexOf('数据类型') !== -1) colMap.dtype = k;
+          else if (h.indexOf('时间') !== -1 || h.indexOf('日期') !== -1) colMap.date = k;
+        });
+        return;
+      }
+      if (!colMap) colMap = { device: 0, nick: 1, id: 2, dtype: 3, date: 4 };
+      if (!cells[colMap.id]) return;
+      out.push({
+        id: cells[colMap.id], nick: cells[colMap.nick] || '',
+        device: cells[colMap.device] || '未知设备',
+        dtype: cells[colMap.dtype] || '', date: cells[colMap.date] || ''
+      });
+    });
+    return out;
+  }
+
+  // 纯文本格式：每行 "数据ID--昵称"，"--" 为分隔符，无设备名 → 用文件名当设备名
+  function parseTxt(text, deviceName) {
+    var out = [];
+    text.split(/\r?\n/).forEach(function (line) {
+      line = line.replace(/^\uFEFF/, '').trim();
+      if (!line || line === '--') return;
+      var i = line.indexOf('--');
+      if (i === -1) return;
+      var id = line.slice(0, i).trim();
+      var nick = line.slice(i + 2).trim();
+      if (!id) return;
+      out.push({ id: id, nick: nick, device: deviceName || '未知设备', dtype: '', date: '' });
+    });
+    return out;
+  }
+
+  // 解码：UTF-8 与 GBK 都试一遍，谁解出的乱码替换符更少就用谁
+  // 文件自己声明的编码最可靠 —— WPS 导出的 .xls 实为 HTML，头部一定带 <meta charset=…>。
+  // 只在「文件开头像 HTML/XML」时才认这个声明，避免普通 CSV/TXT 里恰好出现 "charset=" 被误命中。
+  function declaredCharset(u8) {
+    var n = Math.min(u8.length, 2048), head = '';
+    for (var i = 0; i < n; i++) head += String.fromCharCode(u8[i]);
+    var t = head.replace(/^\uFEFF/, '').replace(/^\s+/, '');
+    if (t.charAt(0) !== '<') return '';
+    var m = head.match(/charset\s*=\s*["']?\s*([A-Za-z0-9_-]+)/i);
+    if (!m) return '';
+    var c = m[1].toLowerCase();
+    if (c === 'gb2312' || c === 'gbk' || c === 'gb18030' || c === 'cp936') return 'gbk';
+    if (c === 'utf8' || c === 'utf-8') return 'utf-8';
+    return '';
+  }
+
+  // 把 CESU-8（6 字节「代理对」写法，部分采集/导出工具写 Emoji 用这种）还原成标准 4 字节 UTF-8。
+  // 标准 UTF-8 解码器遇到 CESU-8 会直接吐替换符 —— 这是「Emoji 变乱码」的常见根因之一。
+  function fixCesu(u8) {
+    var n = u8.length, i = 0, out = [];
+    while (i < n) {
+      if (u8[i] === 0xED && i + 5 < n &&
+          (u8[i + 1] & 0xF0) === 0xA0 && (u8[i + 2] & 0xC0) === 0x80 &&
+          u8[i + 3] === 0xED && (u8[i + 4] & 0xF0) === 0xB0 && (u8[i + 5] & 0xC0) === 0x80) {
+        var hi = 0xD800 + ((u8[i + 1] & 0x0F) << 6) + (u8[i + 2] & 0x3F);
+        var lo = 0xDC00 + ((u8[i + 4] & 0x0F) << 6) + (u8[i + 5] & 0x3F);
+        var cp = 0x10000 + ((hi - 0xD800) << 10) + (lo - 0xDC00);
+        out.push(0xF0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63));
+        i += 6; continue;
+      }
+      out.push(u8[i]); i++;
+    }
+    return (out.length === n) ? u8 : new Uint8Array(out);
+  }
+
+  function decodeBuffer(buf) {
+    var u8 = new Uint8Array(buf);
+
+    // BOM：带 BOM 的文件直接按 BOM 定编码（UTF-8 / UTF-16LE / UTF-16BE）
+    if (u8.length >= 3 && u8[0] === 0xEF && u8[1] === 0xBB && u8[2] === 0xBF)
+      return new TextDecoder('utf-8', { fatal: false }).decode(u8.subarray(3)).replace(/\uFFFD/g, '');
+    if (u8.length >= 2 && u8[0] === 0xFF && u8[1] === 0xFE)
+      return new TextDecoder('utf-16le', { fatal: false }).decode(u8.subarray(2)).replace(/\uFFFD/g, '');
+    if (u8.length >= 2 && u8[0] === 0xFE && u8[1] === 0xFF)
+      return new TextDecoder('utf-16be', { fatal: false }).decode(u8.subarray(2)).replace(/\uFFFD/g, '');
+
+    function dec(enc, bytes) { try { return new TextDecoder(enc, { fatal: false }).decode(bytes); } catch (e) { return null; } }
+    function bad(s) { return s == null ? Infinity : (s.match(/\uFFFD/g) || []).length; }
+
+    var fixed = fixCesu(u8);                        // 先修 Emoji 的 CESU-8 写法
+    var utf8 = dec('utf-8', fixed);
+    var badUtf8 = bad(utf8);
+    if (badUtf8 === 0) return utf8;                 // 干净 UTF-8（含修复后的 Emoji），直接返回
+
+    // ② 没有声明时，比「乱码**占比**」而不是「乱码**个数**」。
+    //    为什么不能比个数：GBK 的合法尾字节范围是 0x40~0xFE（除 0x7F），**恰好包含 0x80~0xBF**，
+    //    而 UTF-8 的中文是「E4~E9 + 两个 0x80~0xBF」—— 整段字节拿去当 GBK 解几乎不产生 �，
+    //    于是"谁乱码少"永远是 GBK 赢 → 整表变乱码。（实测：真机 .xls 的 UTF-8 坏字符 57 个、
+    //    GBK 坏字符只有 16 个，比个数、比占比都会误判成 GBK，所以 ① 那一步是主力。）
+    //    占比能分开的是另一种情况：GBK 文件当 UTF-8 解，坏字节占比通常 30% 以上；
+    //    而 UTF-8 文件只是个别字节坏了（比如表情符号在导出时损坏），占比一般不到 10%。
+    // 有声明时以声明为主、占比兜底；无声明时才用占比阈值（见上面历史注释）。
+    var decl = declaredCharset(u8);
+    var gbk = dec('gbk', u8);
+    var badGbk = bad(gbk);
+    var rU = badUtf8 / (utf8.length || 1), rG = badGbk / (gbk.length || 1);
+    var chosen;
+    if (decl === 'gbk') chosen = (rG <= rU) ? gbk : utf8;
+    else if (decl === 'utf-8') chosen = (rU <= rG) ? utf8 : gbk;
+    else chosen = (rU <= 0.10) ? utf8 : (rG < rU ? gbk : utf8);
+    // 兜底清掉残留替换符：导出时就已损坏的字节无法还原，至少不在界面上显示成方块乱码。
+    return (chosen || utf8).replace(/\uFFFD/g, '');
+  }
+
+  function importFiles(files) {
+    var pending = files.length, added = 0, dup = 0;
+    var existIds = {};
+    var touched = {};                  // 本次新增的数据落在哪些设备上（用来决定导入后跳到哪）
+    rows.forEach(function (r) { existIds[r.id] = true; });
+    var today = todayStr();
+    Array.prototype.forEach.call(files, function (f) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        var text = decodeBuffer(reader.result);
+        var parsed;
+        if (/\.csv$/i.test(f.name)) parsed = parseCsv(text);
+        else if (/\.txt$/i.test(f.name)) parsed = parseTxt(text, f.name.replace(/\.[^.]+$/, ''));
+        else parsed = parseHtmlTable(text);
+        parsed.forEach(function (p) {
+          if (existIds[p.id]) { dup++; return; }
+          existIds[p.id] = true;
+          touched[p.device] = true;
+          rows.push({ k: 'r' + (++uid), id: p.id, nick: p.nick, device: p.device, dtype: p.dtype, date: today, group: '', status: 'none' });
+          added++;
+        });
+        if (--pending === 0) {
+          // 导入完成后自动跳到「刚导进来的那批数据」所在的地方。
+          // 没有「全部视图」了，所以：有新增就停在本次第一个设备；一条都没新增则不动。
+          // 用「实际涉及的设备数」判断，而不是「选了几个文件」——
+          // 一个 .xls 里可能混着多个设备名，多个 .txt 则一个文件一个设备。
+          var devs = Object.keys(touched);
+          if (devs.length) filterDevice = devs[0];
+          if (added) {
+            // 与「点击侧栏切换设备」保持一致的清理：
+            selected = {};         // 清掉勾选，避免跨设备错乱
+            groupInputVal = '';    // 清掉群名框
+            // 筛选/搜索条件也必须清掉：否则新导入的数据可能被旧条件挡在外面，看着像没导进来
+            selDevice = ''; selTag = ''; searchQ = '';
+          }
+          mainView = 'data';       // 导入完成，主区从导入页切回数据表
+          save(); render();
+          toast('导入完成：新增 ' + added + ' 条' + (dup ? '，按数据ID去重跳过 ' + dup + ' 条' : '') +
+            (devs.length ? '（已切到 ' + devs[0] + (devs.length > 1 ? ' 等 ' + devs.length + ' 个设备' : '') + '）' : ''));
+        }
+      };
+      reader.readAsArrayBuffer(f);
+    });
+  }
+
+  // ---------- 导出 ----------
+  // （旧的 exportPending 弹窗版已删除 —— 导出现在是「导出交单表格」整页，见 exportPageHtml / doExport）
+  // 导出用的目标行：已分配（有群名、未完成）的数据，**按侧栏的设备顺序排好**再输出。
+  // 侧栏设备顺序是用户能拖的（deviceOrder），而 rows 是导入顺序 —— 两者本来不一致，
+  // 不排的话导出来的表就是「哪台设备先导入就排前面」，看着是乱的。
+  // 同一台设备内部保持原顺序（Array.sort 在 Chrome 里是稳定的）。
+  function exportTargets() {
+    var idx = {};
+    deviceOrder.forEach(function (d, i) { idx[d] = i; });
+    return rows.filter(function (r) { return r.status === 'pending' && r.group; }).sort(function (a, b) {
+      var ia = (a.device in idx) ? idx[a.device] : 1e9;
+      var ib = (b.device in idx) ? idx[b.device] : 1e9;
+      return ia - ib;
+    });
+  }
+  function doExport(targets) {
+    var blob = zipStore(buildXlsxParts(targets));      // 真 .xlsx（OOXML）
+    var d = new Date();
+    var fname = '拉群导出_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '_' + pad(d.getHours()) + pad(d.getMinutes()) + '.xlsx';
+    downloadBlob(blob, fname);
+    targets.forEach(function (r) { r.status = 'done'; });
+    selected = {};
+    save(); render();
+    toast('已导出 ' + targets.length + ' 条 Excel 数据，并全部标记为「已完成」');
+  }
+
+  // ---------- 极简 xlsx 生成器（stored ZIP + 手写 OOXML，无任何依赖）----------
+  var CRC_TABLE = (function () {
+    var t = [], n, k, c;
+    for (n = 0; n < 256; n++) {
+      c = n;
+      for (k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(buf) {
+    var c = -1;
+    for (var i = 0; i < buf.length; i++) c = (c >>> 8) ^ CRC_TABLE[(c ^ buf[i]) & 0xFF];
+    return (c ^ -1) >>> 0;
+  }
+  function enc(s) { return new TextEncoder().encode(s); }
+  function u16(v) { return [v & 255, (v >>> 8) & 255]; }
+  function u32(v) { return [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255]; }
+  function by(arr) { return new Uint8Array(arr); }
+
+  // 打包 ZIP（全部 stored，不压缩；文件名按 UTF-8 写入）
+  function zipStore(files) {
+    var d = new Date();
+    var tm = ((d.getHours() & 31) << 11) | ((d.getMinutes() & 63) << 5) | ((d.getSeconds() >> 1) & 31);
+    var dt = (((d.getFullYear() - 1980) & 127) << 9) | (((d.getMonth() + 1) & 15) << 5) | (d.getDate() & 31);
+    var parts = [], cd = [], off = 0, cdSize = 0;
+    files.forEach(function (f) {
+      var nm = enc(f.name), data = f.data, crc = crc32(data);
+      var lh = by([].concat(
+        u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(tm), u16(dt),
+        u32(crc), u32(data.length), u32(data.length), u16(nm.length), u16(0)
+      ));
+      parts.push(lh, nm, data);
+      var ch = by([].concat(
+        u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(tm), u16(dt),
+        u32(crc), u32(data.length), u32(data.length), u16(nm.length),
+        u16(0), u16(0), u16(0), u16(0), u32(0), u32(off)
+      ));
+      cd.push(ch, nm);
+      cdSize += ch.length + nm.length;
+      off += lh.length + nm.length + data.length;
+    });
+    var end = by([].concat(
+      u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length),
+      u32(cdSize), u32(off), u16(0)
+    ));
+    return new Blob(parts.concat(cd).concat([end]),
+      { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
+
+  var XML_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n';
+  function xmlEsc(s) {
+    return String(s == null ? '' : s)
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')       // 去掉 XML 不允许的控制字符
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  }
+  // ---------- 真 .xlsx 生成器 ----------
+  // 导出四列：群名称 / 数据昵称 / 数据ID / 设备名。无表头行、不设边框（用 Excel 默认网格线）。
+  // 部件结构与「电脑上 Excel/WPS 另存出来的 xlsx」对齐（10 个部件）：
+  //   [Content_Types].xml / _rels/.rels / docProps/app.xml / docProps/core.xml
+  //   xl/workbook.xml / xl/_rels/workbook.xml.rels / xl/theme/theme1.xml
+  //   xl/styles.xml / xl/sharedStrings.xml / xl/worksheets/sheet1.xml
+  // 文本统一走 sharedStrings（与 Office 完全一致，兼容性最好）；数据ID 一律按文本写入，防长数字丢精度。
+  // 下面这一长串就是 xl/theme/theme1.xml 的内容（标准 Office 主题，取自真实表格引擎另存出来的文件）。
+  // 不要手改它，也不要给它加 XML 声明 —— 生成时会统一补 <?xml ...?>。
+  var THEME_XML = "<a:theme xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" name=\"WPS\"><a:themeElements><a:clrScheme name=\"WPS\"><a:dk1><a:sysClr val=\"windowText\" lastClr=\"000000\"/></a:dk1><a:lt1><a:sysClr val=\"window\" lastClr=\"FFFFFF\"/></a:lt1><a:dk2><a:srgbClr val=\"44546A\"/></a:dk2><a:lt2><a:srgbClr val=\"E7E6E6\"/></a:lt2><a:accent1><a:srgbClr val=\"4874CB\"/></a:accent1><a:accent2><a:srgbClr val=\"EE822F\"/></a:accent2><a:accent3><a:srgbClr val=\"F2BA02\"/></a:accent3><a:accent4><a:srgbClr val=\"75BD42\"/></a:accent4><a:accent5><a:srgbClr val=\"30C0B4\"/></a:accent5><a:accent6><a:srgbClr val=\"E54C5E\"/></a:accent6><a:hlink><a:srgbClr val=\"0026E5\"/></a:hlink><a:folHlink><a:srgbClr val=\"7E1FAD\"/></a:folHlink></a:clrScheme><a:fontScheme name=\"WPS\"><a:majorFont><a:latin typeface=\"Calibri Light\"/><a:ea typeface=\"\"/><a:cs typeface=\"\"/><a:font script=\"Jpan\" typeface=\"ＭＳ Ｐゴシック\"/><a:font script=\"Hang\" typeface=\"맑은 고딕\"/><a:font script=\"Hans\" typeface=\"宋体\"/><a:font script=\"Hant\" typeface=\"新細明體\"/><a:font script=\"Arab\" typeface=\"Times New Roman\"/><a:font script=\"Hebr\" typeface=\"Times New Roman\"/><a:font script=\"Thai\" typeface=\"Tahoma\"/><a:font script=\"Ethi\" typeface=\"Nyala\"/><a:font script=\"Beng\" typeface=\"Vrinda\"/><a:font script=\"Gujr\" typeface=\"Shruti\"/><a:font script=\"Khmr\" typeface=\"MoolBoran\"/><a:font script=\"Knda\" typeface=\"Tunga\"/><a:font script=\"Guru\" typeface=\"Raavi\"/><a:font script=\"Cans\" typeface=\"Euphemia\"/><a:font script=\"Cher\" typeface=\"Plantagenet Cherokee\"/><a:font script=\"Yiii\" typeface=\"Microsoft Yi Baiti\"/><a:font script=\"Tibt\" typeface=\"Microsoft Himalaya\"/><a:font script=\"Thaa\" typeface=\"MV Boli\"/><a:font script=\"Deva\" typeface=\"Mangal\"/><a:font script=\"Telu\" typeface=\"Gautami\"/><a:font script=\"Taml\" typeface=\"Latha\"/><a:font script=\"Syrc\" typeface=\"Estrangelo Edessa\"/><a:font script=\"Orya\" typeface=\"Kalinga\"/><a:font script=\"Mlym\" typeface=\"Kartika\"/><a:font script=\"Laoo\" typeface=\"DokChampa\"/><a:font script=\"Sinh\" typeface=\"Iskoola Pota\"/><a:font script=\"Mong\" typeface=\"Mongolian Baiti\"/><a:font script=\"Viet\" typeface=\"Times New Roman\"/><a:font script=\"Uigh\" typeface=\"Microsoft Uighur\"/><a:font script=\"Geor\" typeface=\"Sylfaen\"/></a:majorFont><a:minorFont><a:latin typeface=\"Calibri\"/><a:ea typeface=\"\"/><a:cs typeface=\"\"/><a:font script=\"Jpan\" typeface=\"ＭＳ Ｐゴシック\"/><a:font script=\"Hang\" typeface=\"맑은 고딕\"/><a:font script=\"Hans\" typeface=\"宋体\"/><a:font script=\"Hant\" typeface=\"新細明體\"/><a:font script=\"Arab\" typeface=\"Arial\"/><a:font script=\"Hebr\" typeface=\"Arial\"/><a:font script=\"Thai\" typeface=\"Tahoma\"/><a:font script=\"Ethi\" typeface=\"Nyala\"/><a:font script=\"Beng\" typeface=\"Vrinda\"/><a:font script=\"Gujr\" typeface=\"Shruti\"/><a:font script=\"Khmr\" typeface=\"DaunPenh\"/><a:font script=\"Knda\" typeface=\"Tunga\"/><a:font script=\"Guru\" typeface=\"Raavi\"/><a:font script=\"Cans\" typeface=\"Euphemia\"/><a:font script=\"Cher\" typeface=\"Plantagenet Cherokee\"/><a:font script=\"Yiii\" typeface=\"Microsoft Yi Baiti\"/><a:font script=\"Tibt\" typeface=\"Microsoft Himalaya\"/><a:font script=\"Thaa\" typeface=\"MV Boli\"/><a:font script=\"Deva\" typeface=\"Mangal\"/><a:font script=\"Telu\" typeface=\"Gautami\"/><a:font script=\"Taml\" typeface=\"Latha\"/><a:font script=\"Syrc\" typeface=\"Estrangelo Edessa\"/><a:font script=\"Orya\" typeface=\"Kalinga\"/><a:font script=\"Mlym\" typeface=\"Kartika\"/><a:font script=\"Laoo\" typeface=\"DokChampa\"/><a:font script=\"Sinh\" typeface=\"Iskoola Pota\"/><a:font script=\"Mong\" typeface=\"Mongolian Baiti\"/><a:font script=\"Viet\" typeface=\"Arial\"/><a:font script=\"Uigh\" typeface=\"Microsoft Uighur\"/><a:font script=\"Geor\" typeface=\"Sylfaen\"/></a:minorFont></a:fontScheme><a:fmtScheme name=\"WPS\"><a:fillStyleLst><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill><a:gradFill><a:gsLst><a:gs pos=\"0\"><a:schemeClr val=\"phClr\"><a:lumOff val=\"17500\"/></a:schemeClr></a:gs><a:gs pos=\"100000\"><a:schemeClr val=\"phClr\"/></a:gs></a:gsLst><a:lin ang=\"2700000\" scaled=\"0\"/></a:gradFill><a:gradFill><a:gsLst><a:gs pos=\"0\"><a:schemeClr val=\"phClr\"><a:hueOff val=\"-2520000\"/></a:schemeClr></a:gs><a:gs pos=\"100000\"><a:schemeClr val=\"phClr\"/></a:gs></a:gsLst><a:lin ang=\"2700000\" scaled=\"0\"/></a:gradFill></a:fillStyleLst><a:lnStyleLst><a:ln w=\"12700\" cap=\"flat\" cmpd=\"sng\" algn=\"ctr\"><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill><a:prstDash val=\"solid\"/><a:miter lim=\"800000\"/></a:ln><a:ln w=\"12700\" cap=\"flat\" cmpd=\"sng\" algn=\"ctr\"><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill><a:prstDash val=\"solid\"/><a:miter lim=\"800000\"/></a:ln><a:ln w=\"12700\" cap=\"flat\" cmpd=\"sng\" algn=\"ctr\"><a:gradFill><a:gsLst><a:gs pos=\"0\"><a:schemeClr val=\"phClr\"><a:hueOff val=\"-4200000\"/></a:schemeClr></a:gs><a:gs pos=\"100000\"><a:schemeClr val=\"phClr\"/></a:gs></a:gsLst><a:lin ang=\"2700000\" scaled=\"1\"/></a:gradFill><a:prstDash val=\"solid\"/><a:miter lim=\"800000\"/></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst><a:outerShdw blurRad=\"101600\" dist=\"50800\" dir=\"5400000\" algn=\"ctr\" rotWithShape=\"0\"><a:schemeClr val=\"phClr\"><a:alpha val=\"60000\"/></a:schemeClr></a:outerShdw></a:effectLst></a:effectStyle><a:effectStyle><a:effectLst><a:reflection stA=\"50000\" endA=\"300\" endPos=\"40000\" dist=\"25400\" dir=\"5400000\" sy=\"-100000\" algn=\"bl\" rotWithShape=\"0\"/></a:effectLst></a:effectStyle><a:effectStyle><a:effectLst><a:outerShdw blurRad=\"57150\" dist=\"19050\" dir=\"5400000\" algn=\"ctr\" rotWithShape=\"0\"><a:srgbClr val=\"000000\"><a:alpha val=\"63000\"/></a:srgbClr></a:outerShdw></a:effectLst></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill><a:solidFill><a:schemeClr val=\"phClr\"><a:tint val=\"95000\"/><a:satMod val=\"170000\"/></a:schemeClr></a:solidFill><a:gradFill rotWithShape=\"1\"><a:gsLst><a:gs pos=\"0\"><a:schemeClr val=\"phClr\"><a:tint val=\"93000\"/><a:satMod val=\"150000\"/><a:shade val=\"98000\"/><a:lumMod val=\"102000\"/></a:schemeClr></a:gs><a:gs pos=\"50000\"><a:schemeClr val=\"phClr\"><a:tint val=\"98000\"/><a:satMod val=\"130000\"/><a:shade val=\"90000\"/><a:lumMod val=\"103000\"/></a:schemeClr></a:gs><a:gs pos=\"100000\"><a:schemeClr val=\"phClr\"><a:shade val=\"63000\"/><a:satMod val=\"120000\"/></a:schemeClr></a:gs></a:gsLst><a:lin ang=\"5400000\" scaled=\"0\"/></a:gradFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements><a:objectDefaults/></a:theme>";
+  function buildXlsxParts(targets) {
+    // 共享字符串表：去重，与 Office 行为一致
+    var sst = [], sstIdx = {};
+    function sid(v) {
+      v = String(v == null ? '' : v);
+      if (Object.prototype.hasOwnProperty.call(sstIdx, v)) return sstIdx[v];
+      sstIdx[v] = sst.length; sst.push(v);
+      return sstIdx[v];
+    }
+    var body = '';
+    targets.forEach(function (r, i) {
+      var n = i + 1;
+      // s=1 是 A 列（群名称）专用样式，见 styles.xml：带一个底色，和 1096.xlsx 里那一格完全相同
+      body += '<row r="' + n + '" spans="1:4">' +
+        '<c r="A' + n + '" s="1" t="s"><v>' + sid(r.group) + '</v></c>' +
+        '<c r="B' + n + '" s="0" t="s"><v>' + sid(r.nick) + '</v></c>' +
+        '<c r="C' + n + '" s="0" t="s"><v>' + sid(r.id) + '</v></c>' +
+        '<c r="D' + n + '" s="0" t="s"><v>' + sid(r.device) + '</v></c>' +
+        '</row>';
+    });
+    var DIM = 'A1:D' + Math.max(1, targets.length);          // 真实数据范围，全表只用这一个
+    var NOW = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+    var list = [
+      ['[Content_Types].xml',
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+        '<Default Extension="xml" ContentType="application/xml"/>' +
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+        '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+        '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>' +
+        '<Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>' +
+        '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
+        '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>' +
+        '</Types>'],
+      ['_rels/.rels',
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>' +
+        '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>' +
+        '</Relationships>'],
+      ['docProps/app.xml',
+        '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" ' +
+        'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">' +
+        '<Application>拉群小助手</Application></Properties>'],
+      ['docProps/core.xml',
+        '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" ' +
+        'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" ' +
+        'xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' +
+        '<dc:creator>拉群小助手</dc:creator><cp:lastModifiedBy>拉群小助手</cp:lastModifiedBy>' +
+        '<dcterms:created xsi:type="dcterms:W3CDTF">' + NOW + '</dcterms:created>' +
+        '<dcterms:modified xsi:type="dcterms:W3CDTF">' + NOW + '</dcterms:modified>' +
+        '</cp:coreProperties>'],
+      ['xl/workbook.xml',
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+        '<workbookPr/><bookViews><workbookView activeTab="0"/></bookViews>' +
+        '<sheets><sheet name="拉群数据" sheetId="1" r:id="rId1"/></sheets></workbook>'],
+      ['xl/_rels/workbook.xml.rels',
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>' +
+        '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>' +
+        '<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+        '</Relationships>'],
+      ['xl/theme/theme1.xml', THEME_XML],
+      // 样式表按 Office 的完整元素集写齐（numFmts / fonts / fills / borders / cellStyleXfs / cellXfs / cellStyles / dxfs / tableStyles），
+      // 缺元素时某些表格工具会自行「修复」文件并丢掉格式。
+      // 字体与「1096.xlsx」的正文逐字一致：宋体 / 11 号 / 常规黑字（color theme=1 即 dk1）。
+      // fills[2] 就是 A 列（群名称）的底色，用的是和 1096.xlsx 那一格**完全相同的主题色引用**
+      // —— theme=9（accent6 = E54C5E）tint=0.8 白化。
+      // 这里必须写 tint=0.8：WPS 的「填充颜色」面板里，主题色那一块列出的正是
+      // 80% / 60% / 40% / -25% / -50% 这几档明暗，源表用的就是 **最浅那档（80%）**。
+      // 换算：E5 + (255-E5)*0.8 = FA；4C → DB；5E → DF，即 #FADBDF。
+      // （曾经的坑：误读成 tint=0.6 → #F5B7BF，颜色偏深，用户在面板里对不上。）
+      // 因为上面 THEME_XML 也一并搬成了 1096.xlsx 的主题，所以两边解析出来的颜色必然逐位相同。
+      ['xl/styles.xml',
+        '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+        '<numFmts count="0"/>' +
+        '<fonts count="1"><font><sz val="11"/><color theme="1"/><name val="宋体"/><charset val="134"/><scheme val="minor"/></font></fonts>' +
+        '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
+        '<fill><patternFill patternType="solid"><fgColor theme="9" tint="0.8"/><bgColor indexed="64"/></patternFill></fill></fills>' +
+        '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+        '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"><alignment vertical="center"/></xf></cellStyleXfs>' +
+        // s=0 → 普通数据格；s=1 → A 列数据格（多一个底色）
+        '<cellXfs count="2">' +
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf>' +
+        '<xf numFmtId="0" fontId="0" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>' +
+        '</cellXfs>' +
+        '<cellStyles count="1"><cellStyle name="常规" xfId="0" builtinId="0"/></cellStyles>' +
+        '<dxfs count="0"/>' +
+        '<tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>' +
+        '</styleSheet>'],
+      ['xl/sharedStrings.xml',
+        '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="' + (targets.length * 4) + '" uniqueCount="' + sst.length + '">' +
+        sst.map(function (v) { return '<si><t xml:space="preserve">' + xmlEsc(v) + '</t></si>'; }).join('') +
+        '</sst>'],
+      ['xl/worksheets/sheet1.xml',
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+        '<sheetPr/><dimension ref="' + DIM + '"/>' +
+        '<sheetViews><sheetView workbookViewId="0"/></sheetViews>' +
+        // 行高 13.5、默认列宽 9、A/B/C/D 列宽全部照搬 1096.xlsx 的存储值
+        // （Excel/WPS 界面显示为 A=30 / B=25 / C=25 / D=8.38）
+        '<sheetFormatPr defaultColWidth="9" defaultRowHeight="13.5"/>' +
+        '<cols><col min="1" max="1" width="30.625" customWidth="1"/><col min="2" max="3" width="25.625" customWidth="1"/><col min="4" max="4" width="9" customWidth="1"/></cols>' +
+        '<sheetData>' + body + '</sheetData>' +
+        // 数据ID 按文本存，用 ignoredErrors 声明「数字以文本存储」不算错，绿三角不出现。
+        // sqref 必须收在真实数据范围内：早先写成 A1:D1048576 会把整张表的「已使用区域」
+        // 撑到最后一行（实测真实表格引擎读出来的 used_range 直接变成满表 200 行），
+        // 于是「全选 / 填充颜色 / Ctrl+End / 滚动条」全都跟着变形 —— 这正是「导出的文件和
+        // 我电脑上另存的文件不一样」的根因。
+        '<ignoredErrors><ignoredError sqref="' + DIM + '" numberStoredAsText="1"/></ignoredErrors>' +
+        '</worksheet>']
+    ];
+    return list.map(function (p) { return { name: p[0], data: enc(XML_HEAD + p[1]) }; });
+  }
+
+  function downloadBlob(blob, fname) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+
+  // ---------- 选中集合辅助 ----------
+  function keysOf(list) { return list.map(function (r) { return r.k; }); }
+  // 可勾选 / 可批量操作的行 = 未完成 且 不在「不在库」里。
+  // 「不在库」是死胡同，不参与勾选、批量设群名、删除选中。
+  function groupPickableRows(dev) { return rows.filter(function (r) { return r.device === dev && r.status !== 'done' && !outOfLib(r); }); }
+  // 搜索匹配（模块级，供 render 与 doneRowsOfDev 共用，避免条件写歪）
+  // 筛选 + 精准搜索。选择框即时生效；搜索为「精准」= 与 数据ID/昵称/群名称 完全相等（忽略大小写与首尾空格）。
+  function matchFilters(r) {
+    if (selDevice && r.device !== selDevice) return false;
+    if (selTag === 'outlib') { if (!outOfLib(r)) return false; }
+    else if (selTag && r.status !== selTag) return false;
+    if (searchQ) {
+      var q = searchQ;
+      var hit = (String(r.id || '').trim().toLowerCase() === q) ||
+                (String(r.nick || '').trim().toLowerCase() === q) ||
+                (String(r.group || '').trim().toLowerCase() === q);
+      if (!hit) return false;
+    }
+    return true;
+  }
+  // 该设备「当前可见」的已完成行 —— 口径与界面上「已完成（N）」的 N 完全一致
+  function doneRowsOfDev(dev) {
+    return rows.filter(function (r) { return r.device === dev && r.status === 'done' && matchFilters(r); });
+  }
+  // 自下而上取最多 n 个「未分配」（排除不在库 / 已完成）；不足 n 则全取。
+  // ⚠️ 是**从列表底部往上数** —— 列表底部 = 最近导入的数据。
+  function tailPick(dev, n) {
+    var list = groupPickableRows(dev).filter(function (r) { return r.status === 'none'; });
+    return list.slice(Math.max(0, list.length - n));
+  }
+  function selCount() { var n = 0; for (var k in selected) if (selected[k]) n++; return n; }
+  // 只刷新与选中相关的界面（勾选数 + 行勾选框 + 表头全选框/半选态），不重绘整个列表
+  function refreshSelectionUI() {
+    var sc = $('selCount'); if (sc) sc.textContent = selCount();
+    // 行勾选框与 selected 同步（点表头全选/取消后，行上的小方框要跟着变）
+    var rs = document.querySelectorAll('input[data-act="check"]');
+    for (var r = 0; r < rs.length; r++) {
+      rs[r].checked = !!selected[rs[r].getAttribute('data-k')];
+    }
+    var boxes = document.querySelectorAll('input[data-act="checkAll"]');
+    for (var i = 0; i < boxes.length; i++) {
+      var dvv = boxes[i].getAttribute('data-dev');
+      var list = groupPickableRows(dvv);
+      var on = 0;
+      for (var j = 0; j < list.length; j++) if (selected[list[j].k]) on++;
+      boxes[i].checked = list.length > 0 && on === list.length;
+      boxes[i].indeterminate = on > 0 && on < list.length;
+    }
+    // 勾选数变了 →「取消」按钮的含义可能变（有勾选 + 空群名 = 批量删除群名），
+    // 这里同步刷新它的样式和提示（勾选不触发 input 事件，所以必须在这里做）
+    var noBtn = document.querySelector('.vb-icon[data-act="cancelPick"]');
+    if (noBtn) {
+      noBtn.className = 'vb-icon' + (cancelWarn() ? ' warn' : '');
+      noBtn.title = cancelTitle();
+    }
+    // 「选中未分配」按钮的激活态（勾选变了它可能该变蓝或变灰）
+    var pkBtn = document.querySelector('.vb-btn[data-act="pickTail"]');
+    if (pkBtn) pkBtn.className = 'vb-btn' + (tailAllSelected() ? ' on' : '');
+  }
+
+  // ---------- 渲染 ----------
+  function render() {
+    // 统计数字现在由 viewBarHtml() 里的 vbStatsHtml() 直接渲染成 HTML（按当前视图算），
+    // 不再在这里单独赋值 —— 元素在 main 里，赋值必须等到 innerHTML 之后才行。
+
+    // 设备顺序：补入新出现的设备，并清理「无数据且非手动新增」的设备
+    rows.forEach(function (r) { if (deviceOrder.indexOf(r.device) === -1) deviceOrder.push(r.device); });
+    var hasRows = {};
+    rows.forEach(function (r) { hasRows[r.device] = true; });
+    deviceOrder = deviceOrder.filter(function (d) { return hasRows[d] || devManual[d]; });
+    // 没有「全部视图」：当前设备不存在了就退回第一个设备
+    if (deviceOrder.indexOf(filterDevice) === -1) filterDevice = deviceOrder[0] || '';
+
+    // 侧栏三段式：标题 / 设备列表（撑满、自己滚）/ 底部全局操作
+    var counts = {};
+    rows.forEach(function (r) { if (r.status !== 'done') counts[r.device] = (counts[r.device] || 0) + 1; });
+    var sb = '<div class="side-head"><h1>拉群小助手</h1></div>';
+    sb += '<div class="side-list">';
+    sb += '<div class="side-title' + (devListCollapsed ? '' : ' open') + '" data-act="toggleDevList" title="点击收起 / 展开设备列表">' +
+      ICON.list + '<span>设备列表</span><span class="dt-caret">' + (devListCollapsed ? '▸' : '▾') + '</span></div>';
+    sb += '<div class="dev-list-body"' + (devListCollapsed ? ' hidden' : '') + '>';
+    deviceOrder.forEach(function (dev) { sb += devItemHtml(dev, dev, counts[dev] || 0); });
+    sb += '<button class="side-add' + (mainView === 'addDev' ? ' active' : '') + '" data-act="openAddDev">' + ICON.plus + '<span>新增设备</span></button>';
+    sb += '<button class="side-add' + (mainView === 'manage' ? ' active' : '') + '" data-act="openManage">' + ICON.manage + '<span>管理设备</span></button>';
+    sb += '</div></div>';
+    // 底部四个全局操作（原来在工具栏里）。注意：监听得用事件委托 —— 侧栏每次重绘都会重建这些按钮。
+    // 当前主区正停在对应整页时加 .active（图标变蓝 + 加粗），与设备列表激活态一致。
+    sb += '<div class="side-foot">' +
+      '<button class="side-act' + (mainView === 'import' ? ' active' : '') + '" data-act="openImport">' + ICON.imp + '<span>导入采集表格</span></button>' +
+      '<button class="side-act' + (mainView === 'export' ? ' active' : '') + '" data-act="openExport">' + ICON.exp + '<span>导出交单表格</span></button>' +
+      '<button class="side-act' + (mainView === 'roster' ? ' active' : '') + '" data-act="openRoster">' + ICON.book + '<span>数据库管理</span></button>' +
+      '<button class="side-act' + (mainView === 'backup' ? ' active' : '') + '" data-act="openBackup">' + ICON.arch + '<span>数据备份</span></button></div>';
+    // ⚠️ 侧栏整体重绘会重建 .side-list，它的内部滚动位置会归零 —— 设备多的时候，
+    // 点一下「管理设备」列表就「自动滑回顶部」，很别扭。这里先存位置、重绘后还原。
+    var oldList = document.querySelector('.side-list');
+    var keepTop = oldList ? oldList.scrollTop : 0;
+    $('sidebar').innerHTML = sb;
+    var newList = document.querySelector('.side-list');
+    if (newList && keepTop) newList.scrollTop = keepTop;
+
+    // 主区
+    var main = $('main');
+    // 三个侧栏操作改为主区整页视图（不再弹窗）
+    if (mainView === 'import') { main.innerHTML = importPageHtml(); wireImportPage(); return; }
+    if (mainView === 'export') { main.innerHTML = exportPageHtml(); return; }
+    if (mainView === 'roster') { main.innerHTML = rosterPageHtml(); return; }
+    if (mainView === 'manage') { main.innerHTML = managePageHtml(); return; }
+    if (mainView === 'addDev') { main.innerHTML = addDevPageHtml(); return; }
+    if (mainView === 'backup') { main.innerHTML = backupPageHtml(); return; }
+    if (!rows.length) {
+      main.innerHTML = '<div class="empty"><div class="big">📋</div>还没有数据，点击左上角「导入采集表格」开始<br><span style="font-size:12px">支持采集报表 .xls / .csv，以及 .txt（格式 ID--昵称，文件名将作为设备名）；可多选多个设备文件一起导入</span></div>';
+      return;
+    }
+    // 操作栏在卡片**下方**（并且吸在窗口底部），所以先拼卡片、最后再拼操作栏
+    var html = '';
+    var dev = filterDevice;
+    var list = rows.filter(function (r) { return r.device === dev; });
+    var vis = list.filter(matchFilters);
+    if (vis.length) html += groupCard(dev, vis);
+    else if (!list.length) html += emptyGroupCard(dev);
+    else html += '<div class="empty">没有匹配的数据</div>';
+    html += viewBarHtml();
+    main.innerHTML = html;
+    refreshSelectionUI();
+  }
+
+  // ---------- 统一线性图标 ----------
+  // 用 SVG 而不是 emoji：emoji 是彩色位图，没法跟着 CSS 变色；
+  // SVG 用 stroke="currentColor"，所以「激活时变蓝」才做得到。
+  var ICON = {
+    grid: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></svg>',
+    device: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.6"/><line x1="10.5" y1="18.2" x2="13.5" y2="18.2"/></svg>',
+    imp: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+    exp: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
+    book: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+    mag: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+    check: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    xmark: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    // 「自下而上选一批」：箭头朝下 + 一条底线
+    down: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3.5" x2="12" y2="15.5"/><polyline points="7 10.5 12 15.5 17 10.5"/><line x1="4" y1="20" x2="20" y2="20"/></svg>',
+    // 「数据备份」：一个打包好的箱子
+    arch: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><polyline points="3 7.5 12 12 21 7.5"/><line x1="12" y1="12" x2="12" y2="21"/></svg>',
+    list: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>',
+    manage: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>',
+    grip: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="9" cy="5.5" r="1.7"/><circle cx="15" cy="5.5" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18.5" r="1.7"/><circle cx="15" cy="18.5" r="1.7"/></svg>',
+    plus: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+    trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>'
+  };
+
+  // 侧栏一行：图标 + 设备名 + 条数（激活时图标变蓝、文字加粗 —— 见 CSS）。
+  // 双击改名 / 拖拽排序已移除，改由「管理设备」页负责删除与排序。
+  function devItemHtml(dev, label, cnt) {
+    // 只有「数据表」视图才显示激活项 —— 停在导入/导出/管理设备等整页时，
+    // 侧栏不该还亮着某个设备（这是个 bug，已修）
+    var on = (mainView === 'data' && filterDevice === dev);
+    return '<div class="dev-item' + (on ? ' active' : '') + '" data-dev="' + esc(dev) + '" title="单击查看">' +
+      ICON.device +
+      '<span class="nm">' + esc(label) + '</span><span class="cnt">' + cnt + '</span></div>';
+  }
+
+  // 统计：本组人数 / 不在库 / 已分配 / 群组。只统计「未完成」的行（已完成单独在折叠区展示）。
+  function vbStatsHtml() {
+    var nTotal = 0, nOol = 0, nPend = 0, gset = {};
+    rows.forEach(function (r) {
+      if (r.device !== filterDevice) return;
+      if (r.status === 'done') return;
+      nTotal++;
+      if (r.status === 'pending') nPend++;
+      if (outOfLib(r)) nOol++;
+      if (r.group) gset[r.group] = true;
+    });
+    return '<div class="vb-stats">' +
+      '<span class="v-total">本组人数 <b>' + nTotal + '</b></span><span class="sep">·</span>' +
+      '<span class="v-ool">不在库 <b>' + nOol + '</b></span><span class="sep">·</span>' +
+      '<span class="v-pending">已分配 <b>' + nPend + '</b></span><span class="sep">·</span>' +
+      '<span class="v-group">群组 <b>' + Object.keys(gset).length + '</b></span></div>';
+  }
+
+  // 操作栏（只有单设备视图了）：一行 —— 已选N + 选中未分配 + 群名输入框 + 确认 + 取消 + 统计（右端）。
+  // 位置在卡片下方，并且吸在窗口底部（见 CSS 的 .view-bar）。
+  function viewBarHtml() {
+    var hasName = !!groupInputVal.trim();
+    return '<div class="view-bar"><div class="vb-row">' +
+      '<span class="vb-sel">已选 <b id="selCount">' + selCount() + '</b></span>' +
+      '<button class="vb-btn' + (tailAllSelected() ? ' on' : '') + '" data-act="pickTail" title="自下而上选中 ' + PICK_N +
+        ' 个「未分配」（不含不在库 / 已完成），再点一次取消选中">' + ICON.down + '<span>选中未分配</span></button>' +
+      '<input id="batchGroup" class="vb-input" placeholder="输入群名称" value="' + esc(groupInputVal) + '">' +
+      '<button class="vb-icon' + (hasName ? ' ok' : '') + '" data-act="confirmPick" title="' +
+        (hasName ? '确认：给勾选的行加群名' : '确认（需先输入群名称）') + '">' + ICON.check + '</button>' +
+      '<button class="vb-icon' + (cancelWarn() ? ' warn' : '') + '" data-act="cancelPick" title="' + cancelTitle() + '">' + ICON.xmark + '</button>' +
+      '<span class="vb-stats-right">' + vbStatsHtml() + '</span>' +
+      '</div></div>';
+  }
+  // 当前勾选的行，是否就是「自下而上那 PICK_N 条」—— 决定按钮要不要变蓝
+  function tailAllSelected() {
+    var ks = keysOf(tailPick(filterDevice, PICK_N));
+    if (!ks.length) return false;
+    return ks.every(function (k) { return selected[k]; });
+  }
+  // 「取消」按钮什么时候该变成「批量删除群名」：群名框为空 + 有勾选。
+  // 只有这时才点亮橙色警示 —— 没勾选时它只是清空输入框，不该吓唬人。
+  function cancelWarn() {
+    return !groupInputVal.trim() && selCount() > 0;
+  }
+  // 「取消」按钮的提示
+  function cancelTitle() {
+    if (groupInputVal.trim()) return '取消：清空勾选与群名输入';
+    if (selCount()) return '批量删除群名：把勾选行的群名清空、退回未分配';
+    return '取消：清空群名输入';
+  }
+
+  // 8 列统一列宽（全百分比，合计 100%）：勾选 + 6 文字列 + 删除。
+  // table-layout:fixed 只看表头第一行，所以宽度在这里一次性定死。
+  // 勾选 / 删除两列只放小图标，配 CSS 收窄内边距后 3% 左右就够，不会出省略号。
+  var CW8 = { c: '3.0%', g: '18.0%', n: '24.6%', i: '21.2%', d: '10.0%', t: '10.0%', s: '10.0%', x: '3.2%' };
+  function headCheckHtml(dev, keys) {
+    var onN = keys.filter(function (k) { return selected[k]; }).length;
+    return '<th class="chk" style="width:' + CW8.c + '"><input type="checkbox" data-act="checkAll" data-dev="' + esc(dev) + '"' +
+      (keys.length && onN === keys.length ? ' checked' : '') + ' title="全选可操作的数据（不含已完成 / 不在库）"></th>';
+  }
+  function headDelHtml(dev) {
+    return '<th class="col-del" style="width:' + CW8.x + '"><button class="row-del" data-act="delAllVisible" data-dev="' + esc(dev) +
+      '" title="删除当前列表全部数据（有确认）">' + ICON.trash + '</button></th>';
+  }
+  function theadHtml(dev, keys) {
+    return '<thead><tr>' + headCheckHtml(dev, keys) +
+      '<th style="width:' + CW8.g + '">群名称</th>' +
+      '<th style="width:' + CW8.n + '">数据昵称</th>' +
+      '<th style="width:' + CW8.i + '">数据ID</th>' +
+      '<th style="width:' + CW8.d + '">设备名</th>' +
+      '<th style="width:' + CW8.t + '">日期</th>' +
+      '<th style="width:' + CW8.s + '">状态</th>' +
+      headDelHtml(dev) + '</tr></thead>';
+  }
+
+  function groupCard(dev, vis) {
+    var showCheck = true;                           // 有勾选列
+    var active = vis.filter(function (r) { return r.status !== 'done'; });
+    var done = vis.filter(function (r) { return r.status === 'done'; });
+    var collapsed = doneCollapsed[dev] !== false;
+    // 表头「全选本组」复选框（不含已完成）
+    var activeKeys = active.map(function (r) { return r.k; });
+    var colN = 8;                                   // 勾选 + 6 文字列 + 删除
+    // 卡片头已去掉：统计搬到了操作栏右侧，表格直接从卡片顶部开始（表头那一行自带浅底，视觉上就是头）
+    var h = '<div class="group-card" data-dev="' + esc(dev) + '">';
+    // 进行中与已完成共用同一张 <table>，列宽天然对齐（已完成折叠靠第二个 <tbody> 的 display:none）
+    h += '<table>' + theadHtml(dev, activeKeys);
+    h += '<tbody>';
+    active.forEach(function (r) { h += rowHtml(r, showCheck); });
+    if (!active.length) h += '<tr><td colspan="' + colN + '" style="color:var(--muted);text-align:center">本组暂无数据</td></tr>';
+    if (done.length) {
+      var doneGset = {};
+      done.forEach(function (r) { if (r.group) doneGset[r.group] = true; });
+      h += '<tr class="done-divider"><td colspan="' + colN + '"><div class="done-bar">' +
+        '<button class="done-toggle" data-act="toggleDone" data-dev="' + esc(dev) + '">' +
+        (collapsed ? '▸' : '▾') + ' 已完成（' + done.length + '） · 群组（' + Object.keys(doneGset).length + '） · 点击' + (collapsed ? '展开' : '折叠') +
+        '</button>' +
+        '<button class="done-act del" data-act="delAllDone" data-dev="' + esc(dev) + '" title="删除本组全部已完成数据（有确认）">' + ICON.trash + '</button>' +
+        '</div></td></tr>';
+    }
+    h += '</tbody>';
+    if (done.length) {
+      h += '<tbody class="done-wrap' + (collapsed ? ' collapsed' : '') + '">';
+      done.forEach(function (r) { h += rowHtml(r, showCheck); });
+      h += '</tbody>';
+    }
+    h += '</table></div>';
+    return h;
+  }
+
+  function emptyGroupCard(dev) {
+    return '<div class="group-card" data-dev="' + esc(dev) + '">' +
+      '<div class="empty-group">该设备暂无数据，请直接导入该设备的采集文件</div></div>';
+  }
+
+  // 全部视图已删除 —— 原来的 allViewCard（多设备合并成一张表）随之去掉。
+  // 现在只剩 groupCard 这一个表格构建路径，改动时不会再有「两处要同步改」的负担。
+
+  function rowHtml(r, showCheck) {
+    var checked = selected[r.k] ? ' checked' : '';
+    var ool = outOfLib(r);
+    var bd = badgeOf(r);
+    var locked = (r.status === 'done') || ool;      // 已完成 / 不在库 的行不可勾选
+    var h = '<tr class="' + (r.status === 'done' ? 'row-done' : '') + '" data-k="' + esc(r.k) + '">';
+    if (showCheck) {
+      h += '<td class="chk"><input type="checkbox" data-act="check" data-k="' + esc(r.k) + '"' + checked + (locked ? ' disabled' : '') +
+        (ool ? ' title="不在库 · 不可勾选"' : '') + '></td>';
+    }
+    h += '<td class="groupname" data-field="group" data-k="' + esc(r.k) + '" title="' + esc(r.group) + '">' + (r.group ? esc(r.group) : '<span style="color:var(--muted);font-weight:400">—</span>') + '</td>' +
+      '<td class="nick" data-field="nick" data-k="' + esc(r.k) + '" title="' + esc(r.nick) + '">' + esc(r.nick) + '</td>' +
+      '<td data-field="id" data-k="' + esc(r.k) + '">' + esc(r.id) + '</td>' +
+      '<td title="' + esc(r.device) + '">' + esc(r.device) + '</td>' +
+      '<td class="date" title="' + esc(r.date) + '">' + esc(shortDate(r.date)) + '</td>' +
+      '<td><span class="badge ' + bd.cls + '">' + bd.text + '</span></td>' +
+      '<td class="col-del"><button class="row-del" data-act="delRow" data-k="' + esc(r.k) + '" title="删除该条（无确认）">' + ICON.trash + '</button></td></tr>';
+    return h;
+  }
+
+  // ---------- 双击编辑 ----------
+  function startEdit(td) {
+    if (td.classList.contains('editing')) return;
+    var k = td.getAttribute('data-k'), field = td.getAttribute('data-field');
+    var row = findRow(k); if (!row) return;
+    // 做到「双击前后零位移」，四个量必须在改动 DOM 之前一次性量好：
+    //   rect   → 单元格完整外框（稍后锁到 td.style.width，整列宽度不变）
+    //   inner* → 扣掉边框后的整格外框（编辑态单元格 padding 归零，输入框正好铺满）
+    //   pad    → 单元格原有内边距（原样交给输入框，文字位置分毫不动）
+    var cs = getComputedStyle(td);
+    var rect = td.getBoundingClientRect();
+    var bL = parseFloat(cs.borderLeftWidth) || 0, bR = parseFloat(cs.borderRightWidth) || 0;
+    var bT = parseFloat(cs.borderTopWidth) || 0, bB = parseFloat(cs.borderBottomWidth) || 0;
+    var r2 = function (n) { return Math.round(n * 100) / 100; };
+    var w = r2(rect.width);
+    var innerW = r2(rect.width - bL - bR);
+    var innerH = r2(rect.height - bT - bB);
+    var pad = cs.paddingTop + ' ' + cs.paddingRight + ' ' + cs.paddingBottom + ' ' + cs.paddingLeft;
+    td._old = td.innerHTML;
+    td._field = field; td._k = k;
+    td.style.width = w + 'px';
+    // 防御性解除 max-width：旧版把 max-width 写在 <td> 上时，一旦这里设了明确 width，
+    // max-width 会立刻生效并把该列压窄、其余列撑大（曾实测跳动 70px）。
+    // 现在列宽由 table-layout:fixed + 表头百分比锁死，这行留作兜底，
+    // 防止将来有人再往 <td> 上加 max-width 把固定布局搞乱。
+    td.style.maxWidth = 'none';
+    td.classList.add('editing');
+    td.innerHTML = '<input class="cell-edit" value="' + esc(row[field] || '') + '">';
+    var el = td.firstChild;
+    el.style.width = innerW + 'px';      // 外框与单元格边界重合
+    el.style.height = innerH + 'px';
+    el.style.padding = pad;              // 内边距与单元格原值一致 → 文字不缩进、不跳动
+    if (el.focus) el.focus();
+    if (el.select) { try { el.select(); } catch (e) {} }
+    el.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') { ev.preventDefault(); commitEdit(td); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); cancelEdit(td); }
+    });
+    el.addEventListener('blur', function () { commitEdit(td); });
+  }
+  function cancelEdit(td) {
+    if (!td.classList.contains('editing')) return;
+    td.classList.remove('editing');
+    td.style.width = '';
+    td.style.maxWidth = '';
+    td.innerHTML = td._old;
+  }
+  function commitEdit(td) {
+    if (!td.classList.contains('editing')) return;
+    var field = td._field, k = td._k;
+    var el = td.querySelector('input');
+    var val = el ? el.value.trim() : '';
+    td.classList.remove('editing');
+    td.style.width = '';
+    td.style.maxWidth = '';
+    var row = findRow(k);
+    if (row) applyFieldEdit(row, field, val);
+    save(); render();
+  }
+  function applyFieldEdit(row, field, val) {
+    if (field === 'nick') { row.nick = val; }
+    else if (field === 'group') {
+      row.group = val;
+      if (val && row.status === 'none') row.status = 'pending';
+      if (!val && row.status === 'pending') row.status = 'none';
+    }
+    else if (field === 'id') {
+      if (!val || val === row.id) return;
+      var dup = false;
+      rows.forEach(function (x) { if (x !== row && x.id === val) dup = true; });
+      if (dup) { toast('数据ID「' + val + '」已存在，未修改'); return; }
+      row.id = val;
+    }
+  }
+
+  // ---------- 删除的撤销 ----------
+  // 把被删的行按**原来的索引位置**插回（而不是一股脑堆到末尾）。
+  // （旧的 makeUndoInsert / deleteRowsByKeys 已删除：
+  //   三个删除入口现在各自内联实现，且都明确「不可撤销」，没有任何调用方）
+
+  // ---------- 批量设群名 / 取消群名 ----------
+  // applyGroup(name, keys?)：keys 省略时用「当前勾选」；confirmPick 无勾选时会显式传入自上而下的 N 个。
+  function applyGroup(name, keys) {
+    name = (name || '').trim();
+    if (!name) { toast('请先输入群名称'); return; }
+    keys = keys || Object.keys(selected).filter(function (kk) { return selected[kk]; });
+    if (!keys.length) { toast('请先勾选要操作的人'); return; }
+    var inKeys = {}; keys.forEach(function (x) { inKeys[x] = true; });
+    var snap = [], n = 0;
+    rows.forEach(function (r) {
+      if (!inKeys[r.k] || r.status === 'done' || outOfLib(r)) return;   // 已完成 / 不在库 不参与
+      snap.push({ k: r.k, group: r.group, status: r.status });            // 撤销用的完整快照
+      r.group = name; r.status = 'pending'; n++;
+    });
+    if (!n) { toast('选中的行无法设为已分配'); return; }
+    selected = {};               // 执行后取消勾选
+    save(); render();
+    toast('已将 ' + n + ' 人设为「已分配」，群名：' + name, function () {
+      snap.forEach(function (s) {
+        var r = findRow(s.k);
+        if (r) { r.group = s.group; r.status = s.status; }
+      });
+      save(); render(); toast('已撤销');
+    });
+  }
+  // 「确认」：**只负责给「已勾选」的行加群名** —— 不再自动挑人。
+  // 挑人是「选中未分配」按钮的职责，两个入口各干各的，不互相牵连。
+  function confirmPick() {
+    var name = groupInputVal.trim();
+    if (!name) { toast('请先输入群名称'); return; }
+    var keys = Object.keys(selected).filter(function (kk) { return selected[kk]; });
+    if (!keys.length) { toast('请先勾选要操作的人（或用左边的「选中未分配」按钮）'); return; }
+    applyGroup(name, keys);
+  }
+  // 「选中未分配」：自下而上选中 PICK_N 条「未分配」，再点一次取消。
+  // 选完滚到「选中的第一行」，数据多时不用自己往下翻。
+  function pickTail() {
+    var ks = keysOf(tailPick(filterDevice, PICK_N));
+    if (!ks.length) { toast('没有可选的「未分配」数据'); return; }
+    var on = ks.every(function (k) { return selected[k]; });
+    ks.forEach(function (k) { if (on) delete selected[k]; else selected[k] = true; });
+    refreshSelectionUI();          // 已选数 + 按钮变色都在这里面刷新，不重绘整表（避免列表跳动）
+    if (!on) {
+      var tr = document.querySelector('tr[data-k="' + ks[0] + '"]');
+      if (tr && tr.scrollIntoView) { try { tr.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (x) {} }
+    }
+    toast(on ? ('已取消选中 ' + ks.length + ' 个') : ('已自下而上选中 ' + ks.length + ' 个未分配'));
+  }
+  // 「取消」：
+  //   · 群名框有内容      → 清空勾选与群名输入（原来的行为）
+  //   · 群名框为空 + 有勾选 → 变成「批量删除群名」：把勾选行的群名清掉、退回未分配（带撤销）
+  //   · 群名框为空 + 无勾选 → 只是清空输入框
+  function cancelPick() {
+    var keys = Object.keys(selected).filter(function (kk) { return selected[kk]; });
+    if (!groupInputVal.trim() && keys.length) { clearGroup(keys); return; }
+    selected = {};
+    groupInputVal = '';
+    render();
+  }
+  // 批量删除群名：勾选行里凡是「有群名且未完成」的，group 清空、status 退回 none。带撤销。
+  function clearGroup(keys) {
+    var inKeys = {}; keys.forEach(function (x) { inKeys[x] = true; });
+    var snap = [], n = 0;
+    rows.forEach(function (r) {
+      if (!inKeys[r.k] || r.status === 'done' || outOfLib(r) || !r.group) return;
+      snap.push({ k: r.k, group: r.group, status: r.status });   // 先快照，再改
+      r.group = ''; r.status = 'none'; n++;
+    });
+    // ⚠️ 不管有没有删到东西，勾选和输入框都要清掉 —— 用户点的是「取消」，
+    // 总得能退出当前选择状态。之前这里没删到东西就 return，导致「取消」按了没反应。
+    selected = {}; groupInputVal = '';
+    if (!n) { render(); toast('勾选的数据本来就没有群名'); return; }
+    save(); render();
+    toast('已删除 ' + n + ' 条的群名，退回「未分配」', function () {
+      snap.forEach(function (s) {
+        var r = findRow(s.k);
+        if (r) { r.group = s.group; r.status = s.status; }
+      });
+      save(); render(); toast('已撤销');
+    });
+  }
+
+  // ---------- 事件委托 ----------
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('input,select')) return;   // 输入框/复选框交给各自事件
+    var t = e.target.closest('[data-act],.dev-item');
+    if (!t) return;
+
+    if (t.classList.contains('dev-item')) {
+      var dv = t.getAttribute('data-dev');
+      var changed = (filterDevice !== dv);
+      var leavingPage = (mainView !== 'data');
+      if (changed) {
+        filterDevice = dv;
+        selected = {};          // 切换设备/全部视图时清空选中
+        groupInputVal = '';     // 同时清空群名输入框，避免误带到别的设备
+      }
+      // 切换页/切换设备时，把目标设备的「已完成」折叠起来（保持列表清爽）
+      if (changed || leavingPage) doneCollapsed[dv] = true;
+      // 点设备名总是回到数据表（可能当前正停在导入/导出/库管理整页）
+      if (changed || leavingPage) { mainView = 'data'; saveUI(); render(); }
+      return;
+    }
+
+    var act = t.getAttribute('data-act'), dev = t.getAttribute('data-dev'), k = t.getAttribute('data-k');
+    // ---- 侧栏底部的三个全局操作：改为主区整页视图（不再弹窗）----
+    if (act === 'openImport') { pendingFiles = []; mainView = 'import'; render(); return; }
+    // ---- 导入页：移除单个文件 / 取消全部 / 确定导入 ----
+    if (act === 'impRemove') { pendingFiles.splice(+t.getAttribute('data-i'), 1); render(); return; }
+    if (act === 'impClear') { pendingFiles = []; render(); toast('已清空待导入列表'); return; }
+    if (act === 'impGo') {
+      if (!pendingFiles.length) { toast('还没有选择文件'); return; }
+      var fs = pendingFiles.slice();       // 先拷一份：importFiles 是异步的
+      pendingFiles = [];
+      importFiles(fs);                     // importFiles 完成后会把 mainView 切回 data 并 render
+      return;
+    }
+    if (act === 'openExport') { mainView = 'export'; render(); return; }
+    if (act === 'openRoster') { mainView = 'roster'; render(); return; }
+    // ---- 数据备份页：导出 / 选备份文件恢复 ----
+    if (act === 'openBackup') { mainView = 'backup'; render(); return; }
+    if (act === 'bkExport') { bkExport(); return; }
+    if (act === 'bkPick') { var bf = $('backupFile'); if (bf) bf.click(); return; }
+    if (act === 'openManage') { mainView = 'manage'; render(); return; }
+    if (act === 'openAddDev') { newDevVal = ''; mainView = 'addDev'; render(); return; }
+    if (act === 'addDevOk') { addDevOk(); return; }
+    if (act === 'toggleDevList') { devListCollapsed = !devListCollapsed; saveUI(); render(); return; }
+    if (act === 'doExport') {
+      var expTargets = exportTargets();
+      if (!expTargets.length) { toast('还没有可导出的数据：先勾选数据 → 输入群名 → 点 ✓ 确认'); return; }
+      mainView = 'data'; doExport(expTargets); return;
+    }
+    // ---- 管理设备整页：改名 / 删除（排序走拖拽，见下方 drag 委托）----
+    if (act === 'renameDev') {
+      var rd = t.getAttribute('data-dev');
+      openModal({
+        title: '修改设备名称',
+        bodyHtml: '<div class="muted">给设备「' + esc(rd) + '」改一个新名称，该设备下的数据会一并跟着改。</div>',
+        input: { placeholder: '新的设备名称', value: rd },
+        okText: '保存',
+        onOk: function (val) { renameDevice(rd, val); }
+      });
+      return;
+    }
+    if (act === 'delDev') {
+      // 删除设备 = 连同其下数据一起永久删除（按用户要求不提供撤销、不弹提示条）
+      var dd = t.getAttribute('data-dev');
+      var goneKeys = {};
+      rows.forEach(function (r) { if (r.device === dd) goneKeys[r.k] = true; });
+      rows = rows.filter(function (r) { return r.device !== dd; });
+      for (var gk in goneKeys) delete selected[gk];
+      deviceOrder = deviceOrder.filter(function (x) { return x !== dd; });
+      delete devManual[dd];
+      delete doneCollapsed[dd];
+      if (filterDevice === dd) filterDevice = deviceOrder[0] || '';   // 删掉的正是当前设备 → 退回第一个
+      save(); render();
+      return;
+    }
+    // ---- 库管理整页 ----
+    if (act === 'rsMode') {
+      setRosterMode(t.getAttribute('data-mode')).then(function () {
+        refreshRosterModal();
+        if (ROSTER_MODE === 'cloud') {
+          toast('正在检查云端名单库…');
+          cloudSync().then(function (r) {
+            refreshRosterModal();
+            toast(r && r.updated ? ('云端名单库已更新：' + r.count.toLocaleString() + ' 条（' + r.ms + 'ms）')
+                                 : '云端名单库已是最新');
+          });
+        } else if (ROSTER_MODE === 'local') {
+          toast('已切到「本地上传名单库」，点「选择文件…」导入');
+        } else {
+          toast('已关闭「在库」检测');
+        }
+      });
+      return;
+    }
+    if (act === 'rsPick') { pickRosterFile(); return; }
+    if (act === 'rsClear') { clearRoster(); return; }
+    if (act === 'toggleDone') { doneCollapsed[dev] = doneCollapsed[dev] === false; render(); }
+    else if (act === 'confirmPick') { confirmPick(); }
+    else if (act === 'cancelPick') { cancelPick(); }
+    else if (act === 'pickTail') { pickTail(); }
+    else if (act === 'delRow') {
+      // 单条删除：静默、不可撤销（按用户要求不弹任何提示）
+      var rk = t.getAttribute('data-k');
+      rows = rows.filter(function (r) { return r.k !== rk; });
+      delete selected[rk];
+      save(); render();
+    }
+    else if (act === 'delAllVisible') {
+      // 表头垃圾桶：删除当前列表全部「未完成」数据（不含已完成），先弹确认（有提示）
+      var scopeList = rows.filter(function (r) { return r.device === dev && r.status !== 'done' && matchFilters(r); });
+      if (!scopeList.length) { toast('当前列表没有可删除的数据'); return; }
+      var nN = scopeList.length;
+      openModal({
+        title: '删除全部',
+        bodyHtml: '将删除当前列表中的 <b class="n">' + nN + '</b> 条数据，<b>此操作不可撤销</b>。确定继续吗？',
+        okText: '全部删除', okRed: true,
+        onOk: function () {
+          var delKeys = {};
+          scopeList.forEach(function (r) { delKeys[r.k] = true; });
+          rows = rows.filter(function (r) { return !delKeys[r.k]; });
+          for (var kk in delKeys) delete selected[kk];
+          save(); render();
+        }
+      });
+    }
+    else if (act === 'delAllDone') {
+      // 已完成区垃圾桶：删除本组「全部已完成」数据（与表头垃圾桶同逻辑：有确认），只对已完成有效
+      var dlist = doneRowsOfDev(dev);
+      if (!dlist.length) { toast('本组没有已完成数据'); return; }
+      var dn = dlist.length;
+      openModal({
+        title: '删除全部已完成',
+        bodyHtml: '将删除本组 <b class="n">' + dn + '</b> 条已完成数据，<b>此操作不可撤销</b>。确定继续吗？',
+        okText: '全部删除', okRed: true,
+        onOk: function () {
+          var dk = {};
+          dlist.forEach(function (r) { dk[r.k] = true; });
+          rows = rows.filter(function (r) { return !dk[r.k]; });
+          for (var k2 in dk) delete selected[k2];
+          save(); render();
+        }
+      });
+    }
+  });
+
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.matches('input[data-act="check"]')) {
+      var k = t.getAttribute('data-k');
+      if (t.checked) selected[k] = true; else delete selected[k];
+      refreshSelectionUI();
+    } else if (t.matches('input[data-act="checkAll"]')) {
+      var dev = t.getAttribute('data-dev');
+      var on = t.checked;
+      rows.forEach(function (r) {                  // 只作用于「可操作」的行（不含已完成 / 不在库）
+        if (r.device !== dev || r.status === 'done' || outOfLib(r)) return;
+        if (on) selected[r.k] = true; else delete selected[r.k];
+      });
+      refreshSelectionUI();
+    }
+  });
+
+  // 两个输入框实时记住内容（操作栏 / 新增设备页都会重绘，避免输入内容丢失）。
+  // 群名框还要顺带刷新两个图标按钮的状态（确认是否点亮、取消是「清空」还是「删群名」）。
+  document.addEventListener('input', function (e) {
+    var t = e.target;
+    if (!t || !t.id) return;
+    if (t.id === 'newDevName') { newDevVal = t.value; return; }
+    if (t.id !== 'batchGroup') return;
+    groupInputVal = t.value;
+    var has = !!t.value.trim();
+    var okBtn = document.querySelector('.vb-icon[data-act="confirmPick"]');
+    if (okBtn) {
+      okBtn.className = 'vb-icon' + (has ? ' ok' : '');
+      okBtn.title = has ? '确认：给勾选项加群名；没勾选则自上而下取未分配' : '确认（需先输入群名称）';
+    }
+    var noBtn = document.querySelector('.vb-icon[data-act="cancelPick"]');
+    if (noBtn) {
+      noBtn.className = 'vb-icon' + (cancelWarn() ? ' warn' : '');
+      noBtn.title = cancelTitle();
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    if ($('modalMask').classList.contains('show')) return;   // 弹窗打开时，回车交给弹窗处理，不再触发群名确认
+    if (e.target && e.target.id === 'newDevName' && e.key === 'Enter') {
+      e.preventDefault();
+      addDevOk();
+      return;
+    }
+    if (e.target && e.target.id === 'batchGroup' && e.key === 'Enter') {
+      e.preventDefault();
+      confirmPick();
+    }
+  });
+
+  document.addEventListener('dblclick', function (e) {
+    if (e.target.closest('input,button,select')) return;
+    var td = e.target.closest('td[data-field]');
+    if (td) startEdit(td);
+  });
+
+  // ---------- 拖拽 ----------
+  // ① 管理设备页：拖动 .mg-row 调整 deviceOrder 顺序；
+  // ② 兜底：外部文件拖到页面空白处时阻止浏览器直接打开该文件。
+  function isFileDrag(e) {
+    var ty = e.dataTransfer && e.dataTransfer.types;
+    return !!ty && Array.prototype.indexOf.call(ty, 'Files') !== -1;   // 外部文件拖拽（导入）
+  }
+  var mgDrag = null;
+  function clearMgOver() {
+    var els = document.querySelectorAll('.mg-row.drag-over');
+    for (var i = 0; i < els.length; i++) els[i].classList.remove('drag-over');
+  }
+  document.addEventListener('dragstart', function (e) {
+    if (e.target.closest && e.target.closest('button')) return;   // 按钮上不发起行拖拽
+    var row = e.target.closest ? e.target.closest('.mg-row[draggable="true"]') : null;
+    if (!row) return;
+    mgDrag = row.getAttribute('data-dev');
+    row.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', 'mg'); } catch (x) {}
+  });
+  document.addEventListener('dragover', function (e) {
+    if (mgDrag) {
+      var row = e.target.closest('.mg-row[draggable="true"]');
+      if (row && row.getAttribute('data-dev') !== mgDrag) {
+        e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+        clearMgOver(); row.classList.add('drag-over');
+      }
+      return;
+    }
+    if (isFileDrag(e)) e.preventDefault();
+  });
+  document.addEventListener('drop', function (e) {
+    if (mgDrag) {
+      var row = e.target.closest('.mg-row[draggable="true"]');
+      clearMgOver();
+      if (row) {
+        var to = row.getAttribute('data-dev');
+        if (to !== mgDrag) {
+          e.preventDefault();
+          var from = deviceOrder.indexOf(mgDrag);
+          if (from !== -1) {
+            deviceOrder.splice(from, 1);
+            var ti = deviceOrder.indexOf(to);
+            deviceOrder.splice(ti, 0, mgDrag);
+            save(); render(); toast('已调整分组顺序');
+          }
+        }
+      }
+      mgDrag = null;
+      return;
+    }
+    if (isFileDrag(e)) e.preventDefault();
+  });
+  document.addEventListener('dragend', function () {
+    mgDrag = null; clearMgOver();
+    var els = document.querySelectorAll('.mg-row.dragging');
+    for (var i = 0; i < els.length; i++) els[i].classList.remove('dragging');
+  });
+
+  // ---------- 主区整页视图（导入 / 导出 / 库管理）----------
+  // 页面头部只有标题（返回按钮已按要求去掉）；回数据表靠点侧栏设备名 / 全部。
+  function pageHead(title) {
+    return '<div class="page-head"><span class="page-title">' + esc(title) + '</span></div>';
+  }
+  // 导入页：**先把文件攒起来，点「确定导入」才真的导**。
+  // 以前是拖进来/选完立刻导入，多选文件时会一个个往里进，想反悔都来不及。
+  function fmtSize(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1048576).toFixed(1) + ' MB';
+  }
+  var pendingFiles = [];      // 待导入的文件（File 对象数组）
+  function addPendingFiles(files) {
+    var added = 0;
+    Array.prototype.forEach.call(files, function (f) {
+      var dup = pendingFiles.some(function (x) { return x.name === f.name && x.size === f.size; });
+      if (dup) return;
+      pendingFiles.push(f); added++;
+    });
+    render();
+    if (!added) toast('这些文件已经在列表里了');
+  }
+  function importPageHtml() {
+    var list = '';
+    if (pendingFiles.length) {
+      list = '<div class="imp-list">' + pendingFiles.map(function (f, i) {
+        return '<div class="imp-item"><span class="nm" title="' + esc(f.name) + '">' + esc(f.name) + '</span>' +
+          '<span class="sz">' + fmtSize(f.size) + '</span>' +
+          '<button class="imp-x" data-act="impRemove" data-i="' + i + '" title="移除这个文件">' + ICON.xmark + '</button></div>';
+      }).join('') + '</div>';
+    }
+    var acts = pendingFiles.length
+      ? '<div class="imp-acts"><button class="btn primary" data-act="impGo">确定导入（' + pendingFiles.length + ' 个文件）</button>' +
+        '<button class="btn" data-act="impClear">取消</button></div>'
+      : '<div class="imp-acts muted">还没有选择文件 —— 拖进来或点上面的框选文件</div>';
+    return '<div class="page-wrap"><div class="page-card">' + pageHead('导入采集表格') +
+      '<div class="page-body"><div class="dropzone" id="dropzone"><span class="dz-big">📄</span>把文件拖到这里，或点击选择文件' +
+      '<div class="dz-sub">支持 .xls / .csv / .txt / .html，可一次选多个；确认无误后再点「确定导入」</div></div>' +
+      list + acts + '</div></div></div>';
+  }
+  // 导入页每次重绘后都要重新挂监听（主区会被 innerHTML 整个换掉）
+  function wireImportPage() {
+    var dz = $('dropzone');
+    if (!dz) return;
+    dz.addEventListener('click', function () { $('fileInput').click(); });
+    dz.addEventListener('dragover', function (e) { e.preventDefault(); e.stopPropagation(); dz.classList.add('over'); });
+    dz.addEventListener('dragleave', function (e) { e.preventDefault(); dz.classList.remove('over'); });
+    dz.addEventListener('drop', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      dz.classList.remove('over');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+        addPendingFiles(e.dataTransfer.files);      // 只攒着，不导入
+      }
+    });
+  }
+  function exportPageHtml() {
+    var targets = exportTargets();
+    var body;
+    if (!targets.length) {
+      body = '<div class="empty">还没有可导出的数据。<br>先在设备里勾选数据、输入群名并点「✓ 确认」，把它们设为「已分配」后就能导出了。</div>';
+    } else {
+      var gset = {};
+      targets.forEach(function (r) { gset[r.group] = true; });
+      var gcount = Object.keys(gset).length;
+      body = '<p>共 <b class="n">' + targets.length + '</b> 条已分配数据，涉及 <b class="n">' + gcount + '</b> 个群组。</p>' +
+        '<p class="muted">将导出为 Excel（.xlsx）文件，四列：群名称 / 数据昵称 / 数据ID / 设备名。<br>导出后这些数据会被标记为「已完成」，并从「已分配」中移除。</p>' +
+        '<div style="margin-top:20px"><button class="btn primary" data-act="doExport">确定导出</button></div>';
+    }
+    return '<div class="page-wrap"><div class="page-card">' + pageHead('导出交单表格') +
+      '<div class="page-body">' + body + '</div></div></div>';
+  }
+  function rosterPageHtml() {
+    return '<div class="page-wrap"><div class="page-card">' + pageHead('数据库管理 · 名单库来源') +
+      '<div class="page-body">' + rosterBodyHtml() + '</div></div></div>';
+  }
+  // 管理设备页：整组改名（原「双击侧栏改名」已移除，改在这里用弹窗完成）
+  function renameDevice(old, val) {
+    val = (val || '').trim();
+    if (!val || val === old) { render(); return; }
+    if (deviceOrder.indexOf(val) !== -1) { toast('已存在同名设备：' + val); render(); return; }
+    var di = deviceOrder.indexOf(old);
+    if (di !== -1) deviceOrder[di] = val;
+    if (devManual[old]) { delete devManual[old]; devManual[val] = true; }
+    if (doneCollapsed[old] !== undefined) { doneCollapsed[val] = doneCollapsed[old]; delete doneCollapsed[old]; }
+    rows.forEach(function (r) { if (r.device === old) r.device = val; });
+    if (filterDevice === old) filterDevice = val;
+    save(); render();
+    toast('设备已改名为：' + val);
+  }
+  // 管理设备：拖拽排序（手柄）/ 改名 / 删除（不再用上下箭头）
+  function managePageHtml() {
+    var body = '';
+    if (!deviceOrder.length) {
+      body = '<div class="empty">还没有设备，先在侧栏点「新增设备」</div>';
+    } else {
+      deviceOrder.forEach(function (dev) {
+        var n = rows.filter(function (r) { return r.device === dev; }).length;
+        body += '<div class="mg-row" draggable="true" data-dev="' + esc(dev) + '">' +
+          '<span class="mg-grip" title="拖动调整顺序">' + ICON.grip + '</span>' +
+          '<span class="nm">' + esc(dev) + '</span>' +
+          '<span class="cnt">' + n + ' 条</span>' +
+          '<button class="btn" data-act="renameDev" data-dev="' + esc(dev) + '">改名</button>' +
+          '<button class="btn red" data-act="delDev" data-dev="' + esc(dev) + '">删除</button>' +
+          '</div>';
+      });
+      body += '<div class="muted" style="margin-top:12px">删除设备会连同该设备下的数据一起删除；拖动行可调整侧栏与全部视图中的分组顺序。</div>';
+    }
+    return '<div class="page-wrap"><div class="page-card">' + pageHead('管理设备') +
+      '<div class="page-body">' + body + '</div></div></div>';
+  }
+
+  // 新增设备页（原来是弹窗，改成和导入/导出/管理设备一致的整页）
+  function addDevPageHtml() {
+    return '<div class="page-wrap"><div class="page-card">' + pageHead('新增设备') +
+      '<div class="page-body">' +
+      '<div class="muted">给这台设备起个名字（建议直接用账号名），之后导入的采集数据就会归到它下面。新增后会自动切到该设备。</div>' +
+      '<input id="newDevName" class="modal-input" placeholder="例如：酒窝姐账号" value="' + esc(newDevVal) + '">' +
+      '<div style="margin-top:20px"><button class="btn primary" data-act="addDevOk">新增</button></div>' +
+      '</div></div></div>';
+  }
+  function addDevOk() {
+    var el = $('newDevName');
+    var val = (el ? el.value : newDevVal).trim();
+    if (!val) { toast('请先输入设备名称'); if (el) el.focus(); return; }
+    if (deviceOrder.indexOf(val) !== -1) { toast('已存在同名设备：' + val); if (el) el.focus(); return; }
+    deviceOrder.push(val);
+    devManual[val] = true;                 // 标记为手动新增 → 即使没数据也保留在侧栏
+    filterDevice = val;
+    selected = {}; groupInputVal = ''; newDevVal = '';
+    mainView = 'data';                     // 新增完直接回到数据表
+    save(); render();
+    toast('已新增设备：' + val);
+  }
+
+  // ---------- 数据备份 / 恢复 ----------
+  // 用途：换电脑 / 重装 / 从浏览器搬到桌面版。导出一个 JSON，另一端导进去。
+  // ⚠️ 不含 40 万条名单库缓存（太大），换机器后联网会自动重新下载，不影响使用。
+  function bkSnapshot() {
+    return {
+      app: '拉群小助手', kind: 'backup', v: 1, at: new Date().toISOString(),
+      data: {
+        rows: rows,
+        deviceOrder: deviceOrder,
+        devManual: devManual,
+        ui: { doneCollapsed: doneCollapsed, devListCollapsed: devListCollapsed },
+        rosterMode: ROSTER_MODE
+      }
+    };
+  }
+  function bkExport() {
+    var blob = new Blob([JSON.stringify(bkSnapshot())], { type: 'application/json' });
+    var d = new Date();
+    var fname = '拉群小助手_备份_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) +
+      '_' + pad(d.getHours()) + pad(d.getMinutes()) + '.json';
+    downloadBlob(blob, fname);
+    toast('已导出备份：' + rows.length.toLocaleString() + ' 条数据 · ' + deviceOrder.length + ' 个设备');
+  }
+  function backupPageHtml() {
+    var nDone = rows.filter(function (r) { return r.status === 'done'; }).length;
+    return '<div class="page-wrap"><div class="page-card">' + pageHead('数据备份') +
+      '<div class="page-body">' +
+      '<p>把所有数据打包成一个文件，换电脑、重装、或从浏览器搬到桌面版时用得上。</p>' +
+      '<p class="muted">当前：<b class="n">' + rows.length.toLocaleString() + '</b> 条数据 · <b class="n">' +
+        deviceOrder.length + '</b> 个设备 · <b class="n">' + nDone.toLocaleString() + '</b> 条已完成</p>' +
+      '<div style="margin-top:20px"><button class="btn primary btn-ico" data-act="bkExport">' +
+        ICON.arch + '<span>导出备份文件</span></button></div>' +
+      '<div class="bk-sep"></div>' +
+      '<p class="muted">从备份文件恢复：<b>会覆盖当前全部数据</b>。恢复后 6 秒内可以点提示条上的「撤销」退回，' +
+        '所以就算导错文件也不会丢东西。</p>' +
+      '<div style="margin-top:14px"><button class="btn btn-ico" data-act="bkPick">' +
+        ICON.imp + '<span>选择备份文件…</span></button></div>' +
+      '</div></div></div>';
+  }
+  function onBackupFileChosen(files) {
+    if (!files || !files.length) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var snap;
+      try { snap = JSON.parse(reader.result); } catch (e) { toast('这个文件打不开（不是有效的备份文件）'); return; }
+      if (!snap || snap.kind !== 'backup' || !snap.data || !Array.isArray(snap.data.rows)) {
+        toast('这个文件不是「拉群小助手」的备份'); return;
+      }
+      var d = snap.data;
+      var n = (d.rows || []).length, dn = (d.deviceOrder || []).length;
+      var when = snap.at ? String(snap.at).replace('T', ' ').replace(/\..*$/, '') : '未知';
+      openModal({
+        title: '从备份恢复',
+        bodyHtml: '将用这个备份<b>替换掉当前的全部数据</b>。<br><br>' +
+          '备份内容：<b class="n">' + n.toLocaleString() + '</b> 条数据 · <b class="n">' + dn + '</b> 个设备<br>' +
+          '备份时间：' + esc(when) + '<br><br>' +
+          '<span style="color:var(--red)">恢复后 6 秒内可点提示条上的「撤销」退回。</span>',
+        okText: '确定恢复', okRed: true,
+        onOk: function () { doRestore(snap); }
+      });
+    };
+    reader.readAsText(files[0], 'utf-8');
+  }
+  function doRestore(snap) {
+    var before = bkSnapshot();          // 先把当前数据整份留下来，供撤销
+    var d = snap.data;
+    rows = d.rows || [];
+    deviceOrder = d.deviceOrder || [];
+    devManual = d.devManual || {};
+    var u = d.ui || {};
+    doneCollapsed = u.doneCollapsed || {};
+    devListCollapsed = !!u.devListCollapsed;
+    selected = {}; groupInputVal = ''; newDevVal = ''; pendingFiles = [];
+    // 补/校正行内键 k，并把 uid 抬到最大，避免之后新增的行撞号
+    rows.forEach(function (r) {
+      if (!r.k) { r.k = 'r' + (++uid); return; }
+      var n2 = parseInt(String(r.k).slice(1), 10);
+      if (!isNaN(n2) && n2 > uid) uid = n2;
+    });
+    filterDevice = deviceOrder[0] || '';
+    mainView = 'data';
+    save();
+    if (d.rosterMode && ROSTER_MODES.indexOf(d.rosterMode) !== -1) {
+      try { setRosterMode(d.rosterMode); } catch (e) {}
+    }
+    render();
+    toast('已恢复 ' + rows.length.toLocaleString() + ' 条数据 · ' + deviceOrder.length + ' 个设备', function () {
+      var b = before.data;                       // 撤销：把恢复前那一份写回去
+      rows = b.rows; deviceOrder = b.deviceOrder; devManual = b.devManual;
+      doneCollapsed = (b.ui || {}).doneCollapsed || {};
+      devListCollapsed = !!(b.ui || {}).devListCollapsed;
+      selected = {}; filterDevice = deviceOrder[0] || '';
+      save(); render(); toast('已撤销恢复');
+    });
+  }
+
+  // ---------- 导入弹窗里的那套已删除 ----------
+  // 导入现在是「导入采集表格」整页：先把文件攒在列表里、可逐个 × 掉，点「确定导入」才真的导。
+  // 见 importPageHtml / wireImportPage / addPendingFiles。
+
+  // 弹窗：点遮罩关闭 + 按钮处理
+  $('modalMask').addEventListener('click', function (e) {
+    if (e.target === this) { closeModal(); return; }
+    var b = e.target.closest('[data-modal]');
+    if (!b) return;
+    if (b.getAttribute('data-modal') === 'ok') confirmModal(); else closeModal();
+  });
+  // 弹窗键盘：Esc = 取消，回车 = 确定（无「确定」按钮的弹窗回车无效；输入型弹窗为空时不关闭）
+  document.addEventListener('keydown', function (e) {
+    if (!$('modalMask').classList.contains('show')) return;
+    if (e.key === 'Escape') { e.preventDefault(); closeModal(); }
+    else if (e.key === 'Enter' && modalHasOk) { e.preventDefault(); confirmModal(); }
+  });
+
+  // ---------- 静态元素的事件 ----------
+  // 只有这两个隐藏的文件选择框是静态的；侧栏那三个按钮和搜索框都在会被重绘的区域里，
+  // 所以它们的事件写在上面的事件委托里（直接绑定第一次重绘后就会失效）。
+  $('fileInput').addEventListener('change', function () {
+    // 只把文件攒到导入页的列表里，等用户点「确定导入」才真的导
+    if (this.files.length) { mainView = 'import'; addPendingFiles(this.files); }
+    this.value = '';
+  });
+  $('rosterFile').addEventListener('change', function () {
+    if (this.files.length) onRosterFileChosen(this.files);
+    this.value = '';
+  });
+  $('backupFile').addEventListener('change', function () {
+    if (this.files.length) onBackupFileChosen(this.files);
+    this.value = '';
+  });
+  load();
+  render();
+  // 名单库：先读本机缓存立刻可用（断网也行），云端再在后台比对版本号
+  initRoster().then(function () {
+    if (rosterSet.size) render();                       // 缓存命中 → 立刻把红标补上
+    else if (ROSTER_MODE === 'cloud') toast('正在获取云端名单库…');
+    return cloudSync();
+  }).then(function (r) {
+    if (r && r.updated) {
+      render();
+      // 名单库是后台下载的，完成时间不可预测（几秒到几十秒）。
+      // 如果此刻正有一条「撤销」提示挂着，千万别顶掉它 —— 用户可能正要按。
+      // 这条只是通知性质，静默丢掉没有损失。
+      if ($('toastUndo').hidden) toast('云端名单库已就绪：' + r.count.toLocaleString() + ' 条（用时 ' + r.ms + 'ms）');
+    }
+  }).catch(function () { /* 拉不到就静默用缓存，不打扰用户 */ });
+})();
+</script>
+</body>
+</html>
