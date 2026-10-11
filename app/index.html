@@ -176,6 +176,8 @@
   .done-act { border: none; background: none; cursor: pointer; font-size: 12px; color: var(--muted); padding: 3px 8px; border-radius: 5px; white-space: nowrap; }
   .done-act:hover { background: #e7ecf5; color: var(--brand); }
   .done-act.del:hover { color: var(--red); background: #fdeceb; }
+  /* 「恢复」按钮（垃圾桶左边）：hover 走绿色，和「删除」的红色区分开 */
+  .done-act.undo:hover { color: var(--green); background: #e5f6ef; }
   tr.done-divider td { padding: 0; }
   .done-wrap.collapsed { display: none; }
 
@@ -1294,7 +1296,9 @@
     manage: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>',
     grip: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="9" cy="5.5" r="1.7"/><circle cx="15" cy="5.5" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18.5" r="1.7"/><circle cx="15" cy="18.5" r="1.7"/></svg>',
     plus: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
-    trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>'
+    trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>',
+    // 「恢复」：逆时针回转箭头 —— 把已完成退回「已分配」
+    undo: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 4.5 3 10.5 9 10.5"/><path d="M5.1 14.5a8 8 0 1 0 1.6-8.6L3 10.5"/></svg>'
   };
 
   // 侧栏一行：图标 + 设备名 + 条数（激活时图标变蓝、文字加粗 —— 见 CSS）。
@@ -1405,6 +1409,9 @@
         '<button class="done-toggle" data-act="toggleDone" data-dev="' + esc(dev) + '">' +
         (collapsed ? '▸' : '▾') + ' 已完成（' + done.length + '） · 群组（' + Object.keys(doneGset).length + '） · 点击' + (collapsed ? '展开' : '折叠') +
         '</button>' +
+        // 「恢复」放在垃圾桶**左边**：把勾选的已完成数据退回「已分配」
+        '<button class="done-act undo" data-act="restoreDone" data-dev="' + esc(dev) +
+        '" title="把「勾选」的已完成数据恢复成「已分配」（带撤销）">' + ICON.undo + '</button>' +
         '<button class="done-act del" data-act="delAllDone" data-dev="' + esc(dev) + '" title="删除本组全部已完成数据（有确认）">' + ICON.trash + '</button>' +
         '</div></td></tr>';
     }
@@ -1430,11 +1437,13 @@
     var checked = selected[r.k] ? ' checked' : '';
     var ool = outOfLib(r);
     var bd = badgeOf(r);
-    var locked = (r.status === 'done') || ool;      // 已完成 / 不在库 的行不可勾选
+    // 「已完成」的行现在**可以勾选**了 —— 用来批量「恢复」回已分配。
+    // ⚠️ 只有「不在库」还锁着（outOfLib 对已完成的行本来就返回 false，所以已完成不会被误锁）。
+    var locked = ool;
     var h = '<tr class="' + (r.status === 'done' ? 'row-done' : '') + '" data-k="' + esc(r.k) + '">';
     if (showCheck) {
       h += '<td class="chk"><input type="checkbox" data-act="check" data-k="' + esc(r.k) + '"' + checked + (locked ? ' disabled' : '') +
-        (ool ? ' title="不在库 · 不可勾选"' : '') + '></td>';
+        (ool ? ' title="不在库 · 不可勾选"' : (r.status === 'done' ? ' title="勾上后可点右侧「恢复」退回已分配"' : '')) + '></td>';
     }
     h += '<td class="groupname" data-field="group" data-k="' + esc(r.k) + '" title="' + esc(r.group) + '">' + (r.group ? esc(r.group) : '<span style="color:var(--muted);font-weight:400">—</span>') + '</td>' +
       '<td class="nick" data-field="nick" data-k="' + esc(r.k) + '" title="' + esc(r.nick) + '">' + esc(r.nick) + '</td>' +
@@ -1534,16 +1543,25 @@
     keys = keys || Object.keys(selected).filter(function (kk) { return selected[kk]; });
     if (!keys.length) { toast('请先勾选要操作的人'); return; }
     var inKeys = {}; keys.forEach(function (x) { inKeys[x] = true; });
-    var snap = [], n = 0;
+    var snap = [], n = 0, nSkip = 0;
     rows.forEach(function (r) {
-      if (!inKeys[r.k] || r.status === 'done' || outOfLib(r)) return;   // 已完成 / 不在库 不参与
+      if (!inKeys[r.k]) return;
+      // 「已完成」不参与改群名（它已经是交完的状态），但**要数出来告诉用户**，
+      // 否则会以为按钮没生效 —— 想改就得先点「恢复」
+      if (r.status === 'done') { nSkip++; return; }
+      if (outOfLib(r)) return;                                            // 不在库 也不参与
       snap.push({ k: r.k, group: r.group, status: r.status });            // 撤销用的完整快照
       r.group = name; r.status = 'pending'; n++;
     });
-    if (!n) { toast('选中的行无法设为已分配'); return; }
+    if (!n) {
+      toast(nSkip ? ('勾选的 ' + nSkip + ' 条都是「已完成」的，要先点「恢复」退回已分配才能改群名')
+                  : '选中的行无法设为已分配');
+      return;
+    }
     selected = {};               // 执行后取消勾选
     save(); render();
-    toast('已将 ' + n + ' 人设为「已分配」，群名：' + name, function () {
+    toast('已将 ' + n + ' 人设为「已分配」，群名：' + name +
+          (nSkip ? '（另有 ' + nSkip + ' 条已完成被跳过，需先恢复）' : ''), function () {
       snap.forEach(function (s) {
         var r = findRow(s.k);
         if (r) { r.group = s.group; r.status = s.status; }
@@ -1574,6 +1592,33 @@
     }
     toast(on ? ('已取消选中 ' + ks.length + ' 个') : ('已自下而上选中 ' + ks.length + ' 个未分配'));
   }
+  // 「恢复」：把**勾选的「已完成」行**退回「已分配」（群名原样保留），带撤销。
+  //   · 只有已完成的行会被动到，其他行一律不管（也不会误伤）
+  //   · 万一条目没有群名 → 退回「未分配」而不是「已分配」，否则会出现「已分配但没有群名」的自相矛盾状态
+  //   · 恢复完把勾选清掉（它们已经换到上面「进行中」区了，留着勾选容易误操作）
+  function restoreDone() {
+    var keys = Object.keys(selected).filter(function (kk) { return selected[kk]; });
+    if (!keys.length) { toast('请先勾选要恢复的数据（已完成的行在下面折叠区里）'); return; }
+    var inKeys = {}; keys.forEach(function (x) { inKeys[x] = true; });
+    var snap = [], n = 0, nPend = 0, nNone = 0;
+    rows.forEach(function (r) {
+      if (!inKeys[r.k] || r.status !== 'done') return;
+      snap.push({ k: r.k, group: r.group, status: r.status });     // 先快照再改
+      if (r.group) { r.status = 'pending'; nPend++; } else { r.status = 'none'; nNone++; }
+      n++;
+    });
+    if (!n) { toast('勾选的数据里没有「已完成」的 —— 它们要先展开才能勾到'); return; }
+    keys.forEach(function (x) { delete selected[x]; });
+    save(); render();
+    var msg = '已恢复 ' + n + ' 条';
+    if (nPend) msg += '为「已分配」';
+    if (nNone) msg += (nPend ? '，另有 ' : '') + nNone + ' 条没有群名，退回「未分配」';
+    toast(msg, function () {
+      snap.forEach(function (s) { var r = findRow(s.k); if (r) { r.group = s.group; r.status = s.status; } });
+      save(); render(); toast('已撤销恢复');
+    });
+  }
+
   // 「取消」：
   //   · 群名框有内容      → 清空勾选与群名输入（原来的行为）
   //   · 群名框为空 + 有勾选 → 变成「批量删除群名」：把勾选行的群名清掉、退回未分配（带撤销）
@@ -1586,20 +1631,28 @@
     render();
   }
   // 批量删除群名：勾选行里凡是「有群名且未完成」的，group 清空、status 退回 none。带撤销。
+  // 「已完成」的行不动（要退群名得先「恢复」），但会数出来告诉用户。
   function clearGroup(keys) {
     var inKeys = {}; keys.forEach(function (x) { inKeys[x] = true; });
-    var snap = [], n = 0;
+    var snap = [], n = 0, nSkip = 0;
     rows.forEach(function (r) {
-      if (!inKeys[r.k] || r.status === 'done' || outOfLib(r) || !r.group) return;
+      if (!inKeys[r.k]) return;
+      if (r.status === 'done') { nSkip++; return; }     // 已完成不参与
+      if (outOfLib(r) || !r.group) return;
       snap.push({ k: r.k, group: r.group, status: r.status });   // 先快照，再改
       r.group = ''; r.status = 'none'; n++;
     });
     // ⚠️ 不管有没有删到东西，勾选和输入框都要清掉 —— 用户点的是「取消」，
     // 总得能退出当前选择状态。之前这里没删到东西就 return，导致「取消」按了没反应。
     selected = {}; groupInputVal = '';
-    if (!n) { render(); toast('勾选的数据本来就没有群名'); return; }
+    if (!n) {
+      render();
+      toast(nSkip ? ('勾选的 ' + nSkip + ' 条是「已完成」的，要先点「恢复」才能退群名')
+                  : '勾选的数据本来就没有群名');
+      return;
+    }
     save(); render();
-    toast('已删除 ' + n + ' 条的群名，退回「未分配」', function () {
+    toast('已删除 ' + n + ' 条的群名，退回「未分配」' + (nSkip ? '（另有 ' + nSkip + ' 条已完成被跳过）' : ''), function () {
       snap.forEach(function (s) {
         var r = findRow(s.k);
         if (r) { r.group = s.group; r.status = s.status; }
@@ -1709,6 +1762,7 @@
     else if (act === 'confirmPick') { confirmPick(); }
     else if (act === 'cancelPick') { cancelPick(); }
     else if (act === 'pickTail') { pickTail(); }
+    else if (act === 'restoreDone') { restoreDone(); }
     else if (act === 'delRow') {
       // 单条删除：静默、不可撤销（按用户要求不弹任何提示）
       var rk = t.getAttribute('data-k');
