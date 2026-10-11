@@ -91,18 +91,11 @@
   .view-bar .vb-sel { font-size: 14px; color: var(--muted); white-space: nowrap; }
   .view-bar .vb-sel b { color: var(--brand); font-size: 17px; margin: 0 2px; }
   /* 群名输入框 */
-  .view-bar .vb-input { width: 240px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 14px; font-family: inherit; outline: none; background: #fff; }
+  .view-bar .vb-input { width: 176px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 14px; font-family: inherit; outline: none; background: #fff; }
   .view-bar .vb-input:focus { border-color: var(--brand); }
-  /* 图标按钮：输入框有内容时 = 确认（蓝底白勾），没内容时 = 取消（白底灰叉） */
-  .view-bar .vb-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; flex-shrink: 0;
-                       border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--muted); cursor: pointer; transition: .15s; }
-  .view-bar .vb-icon:hover { border-color: var(--brand); color: var(--brand); }
-  .view-bar .vb-icon.ok { background: var(--brand); border-color: var(--brand); color: #fff; }
-  .view-bar .vb-icon.ok:hover { background: var(--brand-d); border-color: var(--brand-d); }
-  /* 「取消」在「群名框为空 + 有勾选」时会变成「批量删除群名」→ 用橙色提示一下它的分量 */
-  .view-bar .vb-icon.warn { color: var(--orange); border-color: #f0d8b4; }
-  .view-bar .vb-icon.warn:hover { background: var(--orange-bg); border-color: var(--orange); color: var(--orange); }
-  /* 「选中未分配」：小号（32px，旁边图标按钮 36px），图标 + 小字，和整条操作栏同一套圆角/描边 */
+  /* 注：群名框右边原来那两个「✓ 确认 / ✕ 取消」图标按钮已按用户要求去掉（改成回车执行），
+     所以 .vb-icon 那一整套样式也一并删掉了。 */
+  /* 「选中未分配」：小号（32px），图标 + 小字，和整条操作栏同一套圆角/描边 */
   .view-bar .vb-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; flex-shrink: 0;
                       border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--text);
                       font-size: 13px; font-family: inherit; white-space: nowrap; cursor: pointer; transition: .15s; }
@@ -113,7 +106,38 @@
   .view-bar .vb-btn.on { background: var(--brand); border-color: var(--brand); color: #fff; }
   .view-bar .vb-btn.on svg { color: #fff; }
   .view-bar .vb-btn.on:hover { background: var(--brand-d); border-color: var(--brand-d); }
-  .vb-stats-right { margin-left: auto; align-self: center; }
+  /* 统计靠右：空白留给「搜索框」，让它紧贴统计左边（见 .vb-loc 的 margin-left:auto）。
+     ⚠️ 这里 margin 必须是 0 —— .vb-row 本身有 10px 的 flex gap，再加 margin 会叠成 22px，
+        看起来就不"贴着"了（踩过）。 */
+  .vb-stats-right { margin-left: 0; align-self: center; }
+
+  /* ---------- 搜索定位框（在 ✕ 和统计之间那块空隙里）----------
+     用途只有「找人在哪」：表格内容、勾选、统计都**完全不动**。
+     flex: 1 让它自动吃掉 ✕ 和统计之间的空白，窄屏自动收窄。 */
+  .view-bar .vb-loc { position: relative; display: inline-flex; align-items: center;
+                      flex: 0 0 220px; margin-left: auto; }   /* 固定 220px + 靠右贴统计 */
+  .view-bar .vb-loc .loc-ico { position: absolute; left: 10px; display: inline-flex; color: var(--muted); pointer-events: none; }
+  .view-bar .loc-inp { width: 100%; border: 1px solid var(--line); border-radius: 8px;
+                       padding: 8px 12px 8px 32px; font-size: 13px; font-family: inherit;
+                       outline: none; background: #fff; }
+  .view-bar .loc-inp:focus { border-color: var(--brand); }
+  .view-bar .loc-inp::placeholder { color: #b7bec9; }
+  /* 下拉列表：**向上弹** —— 操作栏吸在窗口最底下，往下弹会被挡在外面 */
+  .view-bar .loc-list { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); z-index: 40;
+                        background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+                        box-shadow: 0 8px 24px rgba(31, 39, 51, .16); }
+  .view-bar .loc-list[hidden] { display: none; }
+  .view-bar .loc-item { display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+                        cursor: pointer; font-size: 13px; transition: background .12s; }
+  .view-bar .loc-item + .loc-item { border-top: 1px solid #f2f4f7; }
+  .view-bar .loc-item:hover, .view-bar .loc-item.active { background: #eef3ff; }
+  .view-bar .loc-nick { font-weight: 600; flex-shrink: 0; max-width: 104px;
+                        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .view-bar .loc-id { flex: 1; min-width: 0; color: var(--muted); font-size: 12px;
+                      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .view-bar .loc-none { padding: 10px 12px; color: var(--muted); font-size: 12.5px; }
+  /* 跳转后高亮那一行（用 !important 盖住 row-done 的底色），3 秒后淡出 */
+  tr.loc-hit > td { background: #d9e6ff !important; transition: background .5s; }
 
   /* 统计（总人数/本组人数 · 不在库 · 已分配 · 群组），配色与各处保持一致 */
   .vb-stats { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; }
@@ -318,6 +342,11 @@
   var selDevice = '';
   var selTag = '';
   var searchQ = '';
+  // 搜索【定位】用的查询词 —— 和上面的 searchQ（筛选）是**两回事**：
+  // 定位只负责「跳到那一行并高亮」，绝不动表格内容 / 勾选 / 统计。
+  var locateQ = '';
+  var locateIdx = 0;          // 列表里当前选中的第几条（键盘 ↑↓ 用）
+  var locHitTm = null;        // 高亮自动淡出的定时器
   var doneCollapsed = {};     // device -> true(折叠)
   var devListCollapsed = false; // 侧栏「设备列表」是否收起
   var mainView = 'data';      // 主区当前视图：data | import | export | roster | manage | addDev | backup
@@ -1198,20 +1227,15 @@
       boxes[i].checked = list.length > 0 && on === list.length;
       boxes[i].indeterminate = on > 0 && on < list.length;
     }
-    // 勾选数变了 →「取消」按钮的含义可能变（有勾选 + 空群名 = 批量删除群名），
-    // 这里同步刷新它的样式和提示（勾选不触发 input 事件，所以必须在这里做）
-    var noBtn = document.querySelector('.vb-icon[data-act="cancelPick"]');
-    if (noBtn) {
-      noBtn.className = 'vb-icon' + (cancelWarn() ? ' warn' : '');
-      noBtn.title = cancelTitle();
-    }
-    // 「选中未分配」按钮的激活态（勾选变了它可能该变蓝或变灰）
+    // 勾选变了 →「选中未分配」按钮的激活态可能跟着变（勾选不触发 input 事件，所以必须在这里做）
     var pkBtn = document.querySelector('.vb-btn[data-act="pickTail"]');
     if (pkBtn) pkBtn.className = 'vb-btn' + (tailAllSelected() ? ' on' : '');
   }
 
   // ---------- 渲染 ----------
   function render() {
+    // 离开数据表（去导入/导出/库管理等整页）就把搜索定位框清掉，别把旧词带过去
+    if (mainView !== 'data') { locateQ = ''; locateIdx = 0; }
     // 统计数字现在由 viewBarHtml() 里的 vbStatsHtml() 直接渲染成 HTML（按当前视图算），
     // 不再在这里单独赋值 —— 元素在 main 里，赋值必须等到 innerHTML 之后才行。
 
@@ -1286,7 +1310,7 @@
     exp: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
     book: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
     mag: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
-    check: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    // （check 勾号图标已删除 —— 原来是「✓ 确认」按钮用的，按钮去掉后没人用了）
     xmark: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
     // 「自下而上选一批」：箭头朝下 + 一条底线
     down: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3.5" x2="12" y2="15.5"/><polyline points="7 10.5 12 15.5 17 10.5"/><line x1="4" y1="20" x2="20" y2="20"/></svg>',
@@ -1330,18 +1354,25 @@
       '<span class="v-group">群组 <b>' + Object.keys(gset).length + '</b></span></div>';
   }
 
-  // 操作栏（只有单设备视图了）：一行 —— 已选N + 选中未分配 + 群名输入框 + 确认 + 取消 + 统计（右端）。
+  // 操作栏（只有单设备视图了）：一行 —— 已选N + 选中未分配 + 群名输入框 + 搜索定位 + 统计（右端）。
   // 位置在卡片下方，并且吸在窗口底部（见 CSS 的 .view-bar）。
+  //
+  // ⚠️ 群名框的「✓ 确认」「✕ 取消」两个按钮已按用户要求**全部去掉**，改成**回车执行**：
+  //    · 框里**有**名称 → 设为该群名（原「确认」）
+  //    · 框里**没**名称 → 把勾选行的群名清掉、退回「未分配」（原「取消」）
   function viewBarHtml() {
-    var hasName = !!groupInputVal.trim();
     return '<div class="view-bar"><div class="vb-row">' +
       '<span class="vb-sel">已选 <b id="selCount">' + selCount() + '</b></span>' +
       '<button class="vb-btn' + (tailAllSelected() ? ' on' : '') + '" data-act="pickTail" title="自下而上选中 ' + PICK_N +
         ' 个「未分配」（不含不在库 / 已完成），再点一次取消选中">' + ICON.down + '<span>选中未分配</span></button>' +
-      '<input id="batchGroup" class="vb-input" placeholder="输入群名称" value="' + esc(groupInputVal) + '">' +
-      '<button class="vb-icon' + (hasName ? ' ok' : '') + '" data-act="confirmPick" title="' +
-        (hasName ? '确认：给勾选的行加群名' : '确认（需先输入群名称）') + '">' + ICON.check + '</button>' +
-      '<button class="vb-icon' + (cancelWarn() ? ' warn' : '') + '" data-act="cancelPick" title="' + cancelTitle() + '">' + ICON.xmark + '</button>' +
+      '<input id="batchGroup" class="vb-input" placeholder="输入群名称，回车确认" value="' + esc(groupInputVal) +
+        '" title="有名称时回车 = 设为「已分配」；留空时回车 = 清空勾选行的群名（退回「未分配」）">' +
+      // 搜索定位框：只用来「找人在哪」，不动表格 / 勾选 / 统计
+      '<span class="vb-loc" id="locWrap">' +
+        '<span class="loc-ico">' + ICON.mag + '</span>' +
+        '<input id="vbLocate" class="loc-inp" placeholder="搜索昵称 / ID" autocomplete="off" value="' + esc(locateQ) + '">' +
+        '<div class="loc-list" id="locList" hidden></div>' +
+      '</span>' +
       '<span class="vb-stats-right">' + vbStatsHtml() + '</span>' +
       '</div></div>';
   }
@@ -1351,17 +1382,8 @@
     if (!ks.length) return false;
     return ks.every(function (k) { return selected[k]; });
   }
-  // 「取消」按钮什么时候该变成「批量删除群名」：群名框为空 + 有勾选。
-  // 只有这时才点亮橙色警示 —— 没勾选时它只是清空输入框，不该吓唬人。
-  function cancelWarn() {
-    return !groupInputVal.trim() && selCount() > 0;
-  }
-  // 「取消」按钮的提示
-  function cancelTitle() {
-    if (groupInputVal.trim()) return '取消：清空勾选与群名输入';
-    if (selCount()) return '批量删除群名：把勾选行的群名清空、退回未分配';
-    return '取消：清空群名输入';
-  }
+  // （cancelWarn / cancelTitle 已删除 —— 它们是给「取消」按钮做样式和提示的，
+  //   两个按钮去掉后就没有调用方了。现在"空群名 + 有勾选 = 批量删群名"的判定在 submitGroup 里。）
 
   // 8 列统一列宽（全百分比，合计 100%）：勾选 + 6 文字列 + 删除。
   // table-layout:fixed 只看表头第一行，所以宽度在这里一次性定死。
@@ -1578,6 +1600,18 @@
     if (!keys.length) { toast('请先勾选要操作的人（或用左边的「选中未分配」按钮）'); return; }
     applyGroup(name, keys);
   }
+  // 回车 = 群名框的**唯一**执行入口（原来那两个 ✓ / ✕ 按钮已按用户要求去掉）。
+  //   · 框里有名称 → 设为该群名
+  //   · 框里没名称 → 把勾选行的群名清掉、退回「未分配」
+  // 执行完把光标放回输入框，方便连续录入。
+  function submitGroup() {
+    var hasName = !!groupInputVal.trim();
+    var keys = Object.keys(selected).filter(function (kk) { return selected[kk]; });
+    if (!keys.length) { toast(hasName ? '请先勾选要设群名的人' : '请先勾选要清除群名的人'); return; }
+    if (hasName) confirmPick();
+    else clearGroup(keys);
+    setTimeout(function () { var el = $('batchGroup'); if (el) el.focus(); }, 0);
+  }
   // 「选中未分配」：自下而上选中 PICK_N 条「未分配」，再点一次取消。
   // 选完滚到「选中的第一行」，数据多时不用自己往下翻。
   function pickTail() {
@@ -1619,17 +1653,100 @@
     });
   }
 
-  // 「取消」：
-  //   · 群名框有内容      → 清空勾选与群名输入（原来的行为）
-  //   · 群名框为空 + 有勾选 → 变成「批量删除群名」：把勾选行的群名清掉、退回未分配（带撤销）
-  //   · 群名框为空 + 无勾选 → 只是清空输入框
-  function cancelPick() {
-    var keys = Object.keys(selected).filter(function (kk) { return selected[kk]; });
-    if (!groupInputVal.trim() && keys.length) { clearGroup(keys); return; }
-    selected = {};
-    groupInputVal = '';
-    render();
+  // ==================== 搜索定位（只为「找人在哪」，不动任何数据） ====================
+  // 规则：**只搜 数据昵称 / 数据ID**，**包含匹配**（打 1588 能命中 1588559962），忽略大小写。
+  //   ⚠️ 按用户要求**不再匹配「群名称」** —— 让行为和输入框提示语完全一致，免得搜了没反应还纳闷。
+  // 范围：**所有设备**（搜到别人设备里的人，点一下会自动切过去）。
+  // 顺序：按侧栏设备顺序 + 表内顺序 —— 和用户看到的顺序一致。
+  function locateFind(q) {
+    q = String(q || '').trim().toLowerCase();
+    if (!q) return [];
+    var ord = {};
+    deviceOrder.forEach(function (d, i) { ord[d] = i; });
+    var out = rows.filter(function (r) {
+      return String(r.nick || '').toLowerCase().indexOf(q) !== -1 ||
+             String(r.id || '').toLowerCase().indexOf(q) !== -1;
+    });
+    // Array.sort 在现代 V8 里是稳定的 → 同设备内保持原顺序
+    return out.sort(function (a, b) {
+      var ia = (a.device in ord) ? ord[a.device] : 1e9;
+      var ib = (b.device in ord) ? ord[b.device] : 1e9;
+      return ia - ib;
+    });
   }
+  var LOC_MAX = 3;            // 列表最多显示 3 条
+  // 只重绘「下拉列表」这一小块 —— 绝不碰主区，所以输入框的焦点和光标永远不会丢
+  function locateRender() {
+    var box = $('locList');
+    if (!box) return;
+    var q = locateQ.trim();
+    if (!q) { box.hidden = true; box.innerHTML = ''; locateIdx = 0; return; }
+    var ms = locateFind(q);
+    if (!ms.length) {
+      box.innerHTML = '<div class="loc-none">没有找到「' + esc(q) + '」</div>';
+      box.hidden = false;
+      locateIdx = 0;
+      return;
+    }
+    if (locateIdx >= Math.min(ms.length, LOC_MAX)) locateIdx = 0;
+    box.innerHTML = ms.slice(0, LOC_MAX).map(function (r, i) {
+      return '<div class="loc-item' + (i === locateIdx ? ' active' : '') + '" data-act="locateGo" data-k="' + esc(r.k) + '">' +
+        '<span class="loc-nick">' + esc(r.nick) + '</span>' +
+        '<span class="loc-id">' + esc(r.id) + '</span>' +
+        '</div>';
+    }).join('');
+    box.hidden = false;
+  }
+  // 键盘 ↑↓ 只挪「高亮项」，不重建列表
+  function locateMove(step) {
+    var box = $('locList');
+    if (!box || box.hidden) return;
+    var n = box.querySelectorAll('.loc-item').length;
+    if (!n) return;
+    locateIdx = (locateIdx + step + n) % n;
+    var items = box.querySelectorAll('.loc-item');
+    for (var i = 0; i < items.length; i++) items[i].classList.toggle('active', i === locateIdx);
+  }
+  // 关闭列表 = 输入框也清空（按用户要求）
+  function locateClose() {
+    locateQ = '';
+    locateIdx = 0;
+    var box = $('locList');
+    if (box) { box.hidden = true; box.innerHTML = ''; }
+    var inp = $('vbLocate');
+    if (inp && inp.value) inp.value = '';
+  }
+  // 点某一条 → 跳过去
+  function locateGo(k) {
+    var r = findRow(k);
+    locateClose();                     // 先关列表 + 清空输入（下面 render 会按空值重建）
+    if (!r) { render(); return; }
+    var dev = r.device;
+    if (dev !== filterDevice) {
+      filterDevice = dev;              // 目标是别的设备 → 切过去
+      selected = {};
+      groupInputVal = '';
+    }
+    // 目标在「已完成」折叠区里 → **自动展开**，否则跳过去也看不见那行（display:none）
+    // ⚠️ 这句必须放在最后：切设备的默认行为是把已完成折叠起来，这里要覆盖它
+    if (r.status === 'done') doneCollapsed[dev] = false;
+    mainView = 'data';
+    saveUI();
+    render();
+    var tr = document.querySelector('tr[data-k="' + k + '"]');
+    if (tr) {
+      tr.scrollIntoView({ block: 'center', behavior: 'smooth' });   // 居中：滚到底会被吸底操作栏挡住
+      tr.classList.add('loc-hit');
+      if (locHitTm) clearTimeout(locHitTm);
+      locHitTm = setTimeout(function () { tr.classList.remove('loc-hit'); }, 3000);
+    } else {
+      toast('这条数据暂时看不到（可能被别的条件挡住了）');
+    }
+  }
+
+  // （原 cancelPick 已删除 —— 它是「✕ 取消」按钮的处理函数。
+  //   按钮去掉后，它的三种含义合并进了 submitGroup：空群名时直接走 clearGroup。）
+
   // 批量删除群名：勾选行里凡是「有群名且未完成」的，group 清空、status 退回 none。带撤销。
   // 「已完成」的行不动（要退群名得先「恢复」），但会数出来告诉用户。
   function clearGroup(keys) {
@@ -1675,6 +1792,7 @@
         filterDevice = dv;
         selected = {};          // 切换设备/全部视图时清空选中
         groupInputVal = '';     // 同时清空群名输入框，避免误带到别的设备
+        locateClose();          // 搜索定位框也清空（避免带着旧词换设备）
       }
       // 切换页/切换设备时，把目标设备的「已完成」折叠起来（保持列表清爽）
       if (changed || leavingPage) doneCollapsed[dv] = true;
@@ -1759,10 +1877,11 @@
     if (act === 'rsPick') { pickRosterFile(); return; }
     if (act === 'rsClear') { clearRoster(); return; }
     if (act === 'toggleDone') { doneCollapsed[dev] = doneCollapsed[dev] === false; render(); }
-    else if (act === 'confirmPick') { confirmPick(); }
-    else if (act === 'cancelPick') { cancelPick(); }
+    // 注：confirmPick / cancelPick 原来挂在这两个按钮上，按钮已按用户要求去掉，
+    //     现在统一由群名框的**回车**触发 submitGroup（见下方 keydown）。
     else if (act === 'pickTail') { pickTail(); }
     else if (act === 'restoreDone') { restoreDone(); }
+    else if (act === 'locateGo') { locateGo(t.getAttribute('data-k')); }
     else if (act === 'delRow') {
       // 单条删除：静默、不可撤销（按用户要求不弹任何提示）
       var rk = t.getAttribute('data-k');
@@ -1831,19 +1950,10 @@
     var t = e.target;
     if (!t || !t.id) return;
     if (t.id === 'newDevName') { newDevVal = t.value; return; }
+    // 搜索定位：只重绘下拉列表，**不重绘主区** —— 否则输入框会丢焦点、光标会跳
+    if (t.id === 'vbLocate') { locateQ = t.value; locateIdx = 0; locateRender(); return; }
     if (t.id !== 'batchGroup') return;
-    groupInputVal = t.value;
-    var has = !!t.value.trim();
-    var okBtn = document.querySelector('.vb-icon[data-act="confirmPick"]');
-    if (okBtn) {
-      okBtn.className = 'vb-icon' + (has ? ' ok' : '');
-      okBtn.title = has ? '确认：给勾选项加群名；没勾选则自上而下取未分配' : '确认（需先输入群名称）';
-    }
-    var noBtn = document.querySelector('.vb-icon[data-act="cancelPick"]');
-    if (noBtn) {
-      noBtn.className = 'vb-icon' + (cancelWarn() ? ' warn' : '');
-      noBtn.title = cancelTitle();
-    }
+    groupInputVal = t.value;      // 只管记值；执行靠回车（见 submitGroup）
   });
   document.addEventListener('keydown', function (e) {
     if ($('modalMask').classList.contains('show')) return;   // 弹窗打开时，回车交给弹窗处理，不再触发群名确认
@@ -1854,8 +1964,30 @@
     }
     if (e.target && e.target.id === 'batchGroup' && e.key === 'Enter') {
       e.preventDefault();
-      confirmPick();
+      submitGroup();      // 有名称→设群名；无名称→清群名退回「未分配」
+      return;
     }
+    // 搜索定位框的键盘操作：↑↓ 选项 / 回车跳转 / Esc 关闭（关闭时输入框一并清空）
+    if (e.target && e.target.id === 'vbLocate') {
+      if (e.key === 'Escape') { e.preventDefault(); locateClose(); return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); locateMove(1); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); locateMove(-1); return; }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var lbox = $('locList');
+        if (lbox && !lbox.hidden) {
+          var lit = lbox.querySelector('.loc-item.active') || lbox.querySelector('.loc-item');
+          if (lit) locateGo(lit.getAttribute('data-k'));
+        }
+      }
+    }
+  });
+  // 点空白处 → 关掉定位列表（输入框一并清空）
+  document.addEventListener('mousedown', function (e) {
+    var box = $('locList');
+    if (!box || box.hidden) return;
+    if (e.target && e.target.closest && e.target.closest('#locWrap')) return;   // 点列表/输入框本身不关
+    locateClose();
   });
 
   document.addEventListener('dblclick', function (e) {
