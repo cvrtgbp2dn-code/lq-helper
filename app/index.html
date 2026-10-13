@@ -133,7 +133,7 @@
        数据类型（从哪一类里挑）→ 选中 N ✓✗ → 修改类型（下拉，选项跟着「数据类型」变）
      位置在卡片**下方**，并且吸在窗口底部（bottom: 12px）——往下滚时它一直停在底部上方 12px，
      滚到页面尽头自然落回原位。只在数据视图存在，所以「只在单设备吸底」是自动满足的。
-     ⚠️ 原来的 ▢未分配 / ▢已分配 / 群名输入框 / ⚑标记已拉群 已**整块删除**（连 CSS 一起）。 */
+     ⚠️ 原来的 ▢未分配 / ▢已分配 / 群名输入框 / ⚑标记已拉群 已**整块删除**（连 CSS 一起）。
      ⚠️ 2026-10-13 追加「数据视图与侧栏中间**不加宽幅**」→ 去掉**居中**，改成**靠左**：
      卡片 / 操作栏 / 空态都从 main 内容框左边缘起排（侧栏右边 → 卡片左边就是 main 那 20px padding，
      不再被 auto margin 推出一段空白）。两者**共用同一个上限、同样是靠左**，所以左右边缘依旧对齐。 */
@@ -392,8 +392,10 @@
      而是一张居中的、宽度适中的卡片。 */
   /* 整页视图（导入/导出/数据库/管理设备/新增设备）：卡片在可用区域里**垂直居中** */
   .page-wrap { max-width: 620px; margin: 0 auto; min-height: calc(100vh - 40px); display: flex; align-items: center; }
-  /* 导出页是左右两栏，620px 会把文字挤到折行（两栏行数就不一样了）→ 单独放宽 */
-  .page-wrap.wide { max-width: 900px; }
+  /* 导出页是左右两栏，620px 会把文字挤到折行（两栏行数就不一样了）→ 单独放宽。
+     ⚠️ 2026-10-13 第三轮：卡片内边距为适配 64px 大圆角从 20px 加大到 48px，
+        这里同步 900 → 960，保证两栏内文宽度不变、说明文字**不折行**（界面协调测试在盯）。 */
+  .page-wrap.wide { max-width: 960px; }
   .page-card { flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
   .page-head { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--thead); }
   .page-title { font-weight: 700; font-size: 15px; color: var(--text); }
@@ -524,6 +526,140 @@
   .mg-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
   .mg-row .cnt { font-size: 12px; color: var(--muted); background: var(--gray-bg); border-radius: 10px; padding: 1px 8px; flex-shrink: 0; }
   .mg-row .btn { padding: 5px 10px; font-size: 12px; }
+
+  /* ==========================================================================
+     2026-10-13 第三轮 · velora 组件还原（牛牛：「都照抄原版」「百分百还原」）
+       border-beam → 整页卡片  ·  file-drop → 导入页  ·  moving-border → 主按钮
+       animated-sidebar → 侧栏  ·  卡片圆角 64px（与光束路径 round 64px 对齐）
+     ⚠️ 色值照抄 velora 浅色主题原值（和仪表盘同一套，不是本项目 --brand）：
+        --vl-from #175dfc · --vl-via #3180ff · --vl-to #00a6ee
+     ========================================================================== */
+  :root { --vl-from: #175dfc; --vl-via: #3180ff; --vl-to: #00a6ee; }
+
+  /* ---- ① 整页卡片：64px 大圆角 + 内边距一起适配（不然大圆角会削到标题）---- */
+  .page-card { position: relative; border-radius: 64px; }
+  .page-head { padding: 24px 48px 16px; background: transparent; border-bottom: 1px solid var(--line); }
+  .page-body { padding: 30px 48px 44px; }
+
+  /* ---- ② border-beam：64px 光斑沿边框跑一圈（size64 / 6s 线性 / 向左渐变）----
+     只显示「边框那一圈」：透明层裁到 padding-box、黑层裁到 border-box，两者 intersect。 */
+  .beam-ring { position: absolute; inset: 0; border-radius: inherit; border: 1px solid transparent; pointer-events: none;
+               -webkit-mask-image: linear-gradient(transparent, transparent), linear-gradient(#000, #000);
+                       mask-image: linear-gradient(transparent, transparent), linear-gradient(#000, #000);
+               -webkit-mask-clip: padding-box, border-box;  mask-clip: padding-box, border-box;
+               -webkit-mask-composite: source-in;           mask-composite: intersect; }
+  .beam-run { position: absolute; width: 64px; aspect-ratio: 1;
+              background: linear-gradient(to left, var(--vl-from), var(--vl-to), transparent);
+              offset-path: rect(0 auto auto 0 round 64px); offset-rotate: 0deg;
+              animation: lq-beam 6s linear infinite; will-change: offset-distance; }
+  @keyframes lq-beam { from { offset-distance: 0%; } to { offset-distance: 100%; } }
+  @media (prefers-reduced-motion: reduce) { .beam-ring { display: none; } }
+
+  /* ---- ③ file-drop（导入页拖拽区）---- */
+  .dropzone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+              border: 2px dashed #e5e5e5; border-radius: 16px; padding: 40px 20px; text-align: center;
+              background: #fff; cursor: pointer;
+              transition: transform .2s, border-color .2s, background .2s, box-shadow .2s, color .2s; }
+  .dropzone:hover { border-color: #b4b4b4; background: #fafafa; }
+  .dropzone.over { border-color: var(--vl-from); background: color-mix(in oklab, var(--vl-from) 5%, #fff);
+                   transform: translateY(-2px);
+                   box-shadow: 0 10px 15px -3px rgba(23, 93, 252, .10), 0 4px 6px -4px rgba(23, 93, 252, .10); }
+  .dropzone svg { color: var(--muted); transition: color .2s; }
+  .dropzone.over svg { color: var(--vl-from); }
+  .dropzone .dz-main { font-size: 14px; font-weight: 500; color: var(--text); }
+  .dropzone.over .dz-main { color: var(--vl-from); }
+  .dropzone .dz-sub { font-size: 12px; color: var(--muted); }
+  /* 待导入文件列表：套 file-drop 的 list（每条 rounded-lg border px-3 py-2） */
+  .imp-item { border-radius: 8px; padding: 8px 12px; }
+
+  /* ---- ④ 操作栏自定义下拉（**向上弹**，替代原生 select）---- */
+  .vb-dd { position: relative; display: inline-flex; }
+  .vb-dd-btn { display: inline-flex; align-items: center; gap: 8px; height: 32px; box-sizing: border-box;
+               padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff;
+               color: var(--text); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; transition: .15s; }
+  .vb-dd-btn:hover, .vb-dd-btn.on { border-color: var(--brand); }
+  .vb-dd-btn svg { color: var(--muted); flex-shrink: 0; transition: transform .15s; }
+  .vb-dd-btn.on svg { transform: rotate(180deg); }
+  .vb-dd-list { position: absolute; bottom: calc(100% + 6px); left: 0; min-width: 100%; z-index: 40;
+                background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 4px;
+                box-shadow: 0 12px 30px rgba(31, 39, 51, .13); }
+  .vb-dd-list[hidden] { display: none; }
+  .vb-dd-opt { display: block; width: 100%; text-align: left; border: none; background: none; font: inherit;
+               font-size: 13px; color: var(--text); padding: 7px 10px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+  .vb-dd-opt:hover { background: var(--hover); }
+  .vb-dd-opt.on { color: var(--brand); font-weight: 600; background: #f4f7ff; }
+
+  /* ---- ⑤ moving-border（主要动作按钮：光斑沿边框跑）---- */
+  .mb-btn { position: relative; display: inline-flex; align-items: center; justify-content: center;
+            overflow: hidden; background: #fff; border: none; border-radius: 8px; padding: 1px; cursor: pointer; }
+  .mb-glow { position: absolute; inset: 0; pointer-events: none; }
+  .mb-light { position: absolute; width: 90px; aspect-ratio: 1;
+              background: radial-gradient(circle, var(--vl-via), transparent 65%);
+              offset-path: rect(0 auto auto 0 round 8px); animation: lq-mb 4s linear infinite; }
+  .mb-inner { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+              border: 1px solid var(--line); border-radius: 7px; background: #fff;
+              padding: 8px 16px; font: inherit; font-size: 13px; color: var(--text); white-space: nowrap; }
+  .mb-btn:hover .mb-inner { border-color: var(--brand); color: var(--brand); }
+  .mb-btn:disabled { cursor: not-allowed; }
+  .mb-btn:disabled .mb-light { display: none; }
+  .mb-btn:disabled .mb-inner { opacity: .45; }
+  @keyframes lq-mb { from { offset-distance: 0%; } to { offset-distance: 100%; } }
+  @media (prefers-reduced-motion: reduce) {
+    .mb-light { display: none; }
+    .mb-glow { background: linear-gradient(135deg, var(--vl-via), transparent 35%, transparent 65%, var(--vl-via)); }
+  }
+
+  /* ---- ⑥ animated-sidebar（rail：64px ⇄ 悬停/固定 232px）----
+     展开时用**负 margin-right** 把多出来的宽度从文档流里抵消 → 主区纹丝不动，侧栏浮在内容上。 */
+  .sidebar { flex: 0 0 64px; width: 64px; padding: 16px 8px 12px; z-index: 40;
+             transition: flex-basis .3s ease-out; }
+  /* ⚠️⚠️ 2026-10-13 牛牛：展开要**把内容往右推**（不再覆盖式）——
+     所以这里**删掉了** `margin-right: -168px`（它正是把多出来的宽度从文档流里抵消掉、让侧栏浮在内容上的）
+     和那层 box-shadow。现在展开 = 侧栏真占 232px，主区整体右移 168px。 */
+  .sidebar.expand { flex-basis: 232px; width: 232px; }
+  /* ⚠️⚠️ 收起态的**唯一**做法 = 把文字「隐形」（visibility），**绝不改盒模型**（不留 padding/justify 的改动）。
+     原因（实测踩过）：文字一收、盒子跟着变，鼠标悬停展开的**那一瞬间**点击就会落到别的按钮上
+     （真机上点设备图标，实测打到了「仪表盘」）。隐形后条目盒子与展开态逐像素一致，
+     多出来的部分交给 .sidebar 的 overflow:hidden 裁掉 —— 悬停展开时鼠标底下的东西**一点不动**。 */
+  .sidebar .side-head h1,
+  .sidebar .side-act span,
+  .sidebar .side-title span,
+  .sidebar .dt-caret,
+  .sidebar .side-add span,
+  .sidebar .dev-item .nm,
+  .sidebar .grp-item .nm,
+  .sidebar .side-pin span { opacity: 1; visibility: visible; transition: opacity .2s ease-out; }
+  .sidebar:not(.expand) .side-head h1,
+  .sidebar:not(.expand) .side-act span,
+  .sidebar:not(.expand) .side-title span,
+  .sidebar:not(.expand) .dt-caret,
+  .sidebar:not(.expand) .side-add span,
+  .sidebar:not(.expand) .dev-item .nm,
+  .sidebar:not(.expand) .grp-item .nm,
+  .sidebar:not(.expand) .side-pin span { opacity: 0; visibility: hidden; white-space: nowrap; }
+  /* 收起态：**两个列表的内容一律不展开**（牛牛：「折叠时设备列表和群组列表不展开」）——
+     只留「设备列表 / 群组列表」两个分组头（图标）。
+     ⚠️ 原来这里是把 `.side-grp` 整段 `visibility:hidden` —— 但「群组列表」那个标题（图标）**就在这段里面**，
+        结果连图标一起藏了（牛牛报的 bug）→ 改成只藏列表内容。
+     ⚠️ display:none 会改变布局，所以「悬停展开」仍是延迟 160ms 那条路（见 initSidebarRail）。 */
+  .sidebar:not(.expand) .dev-list-body,
+  .sidebar:not(.expand) .grp-list-body,
+  .sidebar:not(.expand) .grp-sub { display: none; }
+  /* 收起时的品牌标：绝对定位贴左（不参与布局） */
+  .sidebar .side-head { position: relative; }
+  .sidebar:not(.expand) .side-head::before { content: '拉'; position: absolute; left: 8px; top: 0;
+      display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px;
+      background: var(--vl-from); color: #fff; font-size: 14px; font-weight: 700; }
+  /* 底部「保持展开」固定键：固定后箭头翻转 180°（原版同款）。
+     ⚠️ 2026-10-13 牛牛：它挪到了**底栏第一项**（「导入粉丝」上方），并**下面补一条分割线**
+        —— 原来它紧贴群组列表，跟「已完成群组」分不清。 */
+  .side-pin { display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: none;
+              border-radius: 8px 8px 0 0; padding: 9px 10px 12px; font: inherit; font-size: 13px; color: var(--muted);
+              cursor: pointer; transition: .15s; flex-shrink: 0;
+              border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+  .side-pin:hover { background: var(--hover); color: var(--text); }
+  .side-pin svg { flex-shrink: 0; transition: transform .3s ease-out; }
+  .side-pin.on svg { transform: rotate(180deg); }
 </style>
 </head>
 <body>
@@ -606,10 +742,43 @@
   var newDevVal = '';         // 「新增设备」页里输入框的值（同样要回填）
   var uid = 0;
 
+  // ---------- 侧栏 rail 展开态（2026-10-13 第三轮：velora animated-sidebar）----------
+  // 悬停自动展开到 232px，或点底部「保持展开」固定住（固定后鼠标移开也不收起）。
+  var sidebarPinned = false, sbHover = false, sbOpen = false, sbFocus = false, sbTimer = null;
+  function syncSidebar() {
+    var sb = $('sidebar');
+    if (sb) sb.classList.toggle('expand', sidebarPinned || sbOpen || sbFocus);
+  }
+  function initSidebarRail() {
+    var sb = $('sidebar');
+    if (!sb) return;
+    // ⚠️⚠️ 悬停**延迟 160ms** 再展开 —— 这是必须的，不是"手感"问题：
+    //    鼠标"瞬间移入 + 立刻点击"时，展开动画会把条目盒子从指针底下挪走，
+    //    结果点到了别的按钮（实测真机点设备图标，打到了「仪表盘」）。
+    //    延迟后：快速点击先落在收起态的条目上（正确），真人停顿一下照常展开（无感）。
+    sb.addEventListener('mouseenter', function () {
+      sbHover = true;
+      clearTimeout(sbTimer);
+      sbTimer = setTimeout(function () { if (sbHover) { sbOpen = true; syncSidebar(); } }, 160);
+    });
+    sb.addEventListener('mouseleave', function () {
+      sbHover = false; sbOpen = false;
+      clearTimeout(sbTimer);
+      syncSidebar();
+    });
+    // 键盘走查也展开（无障碍）。
+    // ⚠️ focusout 会从子元素**冒泡**上来、鼠标点击时也会 blur 掉先前的焦点 ——
+    //    所以只在焦点**真的离开侧栏**时才收起。
+    sb.addEventListener('focusin', function () { sbFocus = true; syncSidebar(); });
+    sb.addEventListener('focusout', function () {
+      setTimeout(function () { if (!sb.contains(document.activeElement)) { sbFocus = false; syncSidebar(); } }, 0);
+    });
+  }
+
   // ---------- 持久化 ----------
   // 只写 UI 状态这一个键（体积小）—— 供输入框实时保存使用，避免为了记一个数字把几千条 rows 重新序列化
   function saveUI() {
-    try { localStorage.setItem(LS_UI, JSON.stringify({ doneCollapsed: doneCollapsed, devListCollapsed: devListCollapsed })); } catch (e) {}
+    try { localStorage.setItem(LS_UI, JSON.stringify({ doneCollapsed: doneCollapsed, devListCollapsed: devListCollapsed, sidebarPinned: sidebarPinned })); } catch (e) {}
   }
   // 群组创建顺序单独存一个键 —— 它很小，且和 rows 的写入时机不完全一样（改群名并不改数据）
   function saveGrpOrder() { try { localStorage.setItem(LS_GRP, JSON.stringify(grpOrder)); } catch (e) {} }
@@ -631,7 +800,7 @@
       var dm = localStorage.getItem(LS_MAN);
       if (dm) devManual = JSON.parse(dm) || {};
       var ui = localStorage.getItem(LS_UI);
-      if (ui) { var u = JSON.parse(ui) || {}; doneCollapsed = u.doneCollapsed || {}; devListCollapsed = !!u.devListCollapsed; }
+      if (ui) { var u = JSON.parse(ui) || {}; doneCollapsed = u.doneCollapsed || {}; devListCollapsed = !!u.devListCollapsed; sidebarPinned = !!u.sidebarPinned; }
       var go = localStorage.getItem(LS_GRP);
       if (go) { var gg = JSON.parse(go); if (Object.prototype.toString.call(gg) === '[object Array]') grpOrder = gg.filter(function (x) { return typeof x === 'string'; }); }
     } catch (e) { rows = []; deviceOrder = []; devManual = {}; }
@@ -743,6 +912,7 @@
     var foot = '<button class="btn" data-modal="cancel">' + esc(opt.cancelText || '取消') + '</button>';
     if (!opt.noOk) foot += '<button class="btn ' + (opt.okRed ? 'red' : 'primary') + '" data-modal="ok">' + esc(opt.okText || '确定') + '</button>';
     $('modalFoot').innerHTML = foot;
+    applyMovingBorder();                    // 弹窗里的主按钮也套 moving-border（光斑沿边框跑）
     modalOkFn = opt.onOk || null;
     modalHasOk = !opt.noOk;
     modalAllowEmpty = !!opt.allowEmpty;
@@ -1762,6 +1932,31 @@
     //   那两个按钮已被「数据类型 + 选中 N」取代，这段一起删掉了。）
   }
 
+  // ---------- velora 组件还原：渲染期的小工具（2026-10-13 第三轮）----------
+  // ① border-beam：整页卡片里塞一层「跑光束」（只用于那 6 个整页视图）
+  var BEAM_HTML = '<div class="beam-ring"><span class="beam-run"></span></div>';
+  function withBeam(html) { return html.replace('<div class="page-card">', '<div class="page-card">' + BEAM_HTML); }
+  // ② moving-border：主要动作按钮（.btn.primary）换成「光斑沿边框跑」的结构。
+  //    ⚠️ 必须去掉 primary 类：.btn.primary 是 2 个类的选择器，优先级比 .mb-btn 高，
+  //       不去掉的话蓝底会把新样式整个盖掉。
+  function applyMovingBorder() {
+    var list = document.querySelectorAll('.btn.primary');
+    Array.prototype.forEach.call(list, function (b) {
+      if (b.classList.contains('mb-btn')) return;
+      var label = b.innerHTML;
+      b.classList.remove('primary');
+      b.classList.add('mb-btn');
+      b.innerHTML = '<span class="mb-glow"><span class="mb-light"></span></span>' +
+                    '<span class="mb-inner">' + label + '</span>';
+    });
+  }
+  // 主区内容统一入口：写 innerHTML + 应用 moving-border。
+  // ⚠️ render() 的分支很多且各自 return，统一走这里才不会漏掉按钮改造。
+  function paintMain(html) {
+    $('main').innerHTML = html;
+    applyMovingBorder();
+  }
+
   // ---------- 渲染 ----------
   function render() {
     // 离开数据表（去导入/导出/库管理等整页）就把搜索定位框清掉，别把旧词带过去
@@ -1821,11 +2016,17 @@
     //       否则设备一多，它就被顶到下面、要滑下去才看得到（牛牛原话）。
     //    没有任何群名时返回空串 → 连外壳带分隔线都不渲染，侧栏布局纹丝不动。
     var grpHtml = sidebarGrpHtml();
-    if (grpHtml) sb += '<div class="side-grp">' + grpHtml + '</div>';
+    // ⚠️ 2026-10-13 第三轮：设备列表 / 群组列表之间**补一条分割线**（牛牛要求加回来）
+    if (grpHtml) sb += '<div class="side-hr"></div><div class="side-grp">' + grpHtml + '</div>';
     // 底部四个全局操作（原来在工具栏里）。注意：监听得用事件委托 —— 侧栏每次重绘都会重建这些按钮。
     // 图标**平时灰**、**激活时才上色**，各用各的色（由 --ac 交给 CSS，见 .side-act 规则）。
     // ⚠️ 2026-10-13 牛牛：「导入表格」→「**导入粉丝**」。
+    // ⚠️ 2026-10-13 第三轮：「保持展开」从「群组列表下面」挪进底栏、当**第一项**（即在「导入粉丝」上方）——
+    //    它原来紧贴群组列表，跟「已完成群组」分不清；现在它下面还有一条分割线跟四颗菜单分开。
     sb += '<div class="side-foot">' +
+      '<button class="side-pin' + (sidebarPinned ? ' on' : '') + '" data-act="togglePin" title="' +
+      (sidebarPinned ? '取消固定（鼠标移开会自动收起）' : '保持展开（不必一直悬停）') + '">' +
+      ICON.caretRight + '<span>保持展开</span></button>' +
       '<button class="side-act' + (mainView === 'import' ? ' active' : '') + '" data-act="openImport" style="--ac:' + FUNC_COLORS.imp + '">' + ICON.imp + '<span>导入粉丝</span></button>' +
       '<button class="side-act' + (mainView === 'export' ? ' active' : '') + '" data-act="openExport" style="--ac:' + FUNC_COLORS.exp + '">' + ICON.exp + '<span>导出表格</span></button>' +
       '<button class="side-act' + (mainView === 'roster' ? ' active' : '') + '" data-act="openRoster" style="--ac:' + FUNC_COLORS.book + '">' + ICON.book + '<span>名单管理</span></button>' +
@@ -1841,6 +2042,8 @@
     if (newList && keepTop) newList.scrollTop = keepTop;
     var newGrp = document.querySelector('.side-grp');
     if (newGrp && keepGrpTop) newGrp.scrollTop = keepGrpTop;
+    // 侧栏 rail 的展开态（悬停 / 固定）—— 重绘后重新贴一次 class
+    syncSidebar();
 
     // 主区
     var main = $('main');
@@ -1850,18 +2053,19 @@
     // 仪表盘整页去掉 main 的内边距 → 背景网格才能真正铺满右主区（见 CSS main.is-dash）
     main.classList.toggle('is-dash', mainView === 'dash');
     // 三个侧栏操作改为主区整页视图（不再弹窗）
-    if (mainView === 'import') { main.innerHTML = importPageHtml(); wireImportPage(); return; }
-    if (mainView === 'export') { main.innerHTML = exportPageHtml(); return; }
-    if (mainView === 'roster') { main.innerHTML = rosterPageHtml(); return; }
-    if (mainView === 'manage') { main.innerHTML = managePageHtml(); return; }
-    if (mainView === 'addDev') { main.innerHTML = addDevPageHtml(); return; }
-    if (mainView === 'backup') { main.innerHTML = backupPageHtml(); return; }
+    // ⚠️ 6 个整页都过 withBeam() → 卡片上加 velora border-beam 那圈跑光
+    if (mainView === 'import') { paintMain(withBeam(importPageHtml())); wireImportPage(); return; }
+    if (mainView === 'export') { paintMain(withBeam(exportPageHtml())); return; }
+    if (mainView === 'roster') { paintMain(withBeam(rosterPageHtml())); return; }
+    if (mainView === 'manage') { paintMain(withBeam(managePageHtml())); return; }
+    if (mainView === 'addDev') { paintMain(withBeam(addDevPageHtml())); return; }
+    if (mainView === 'backup') { paintMain(withBeam(backupPageHtml())); return; }
     // 仪表盘：放在「还没有数据」那句之前 —— 没数据时也该能看到搜索框
-    if (mainView === 'dash') { main.innerHTML = dashPage2Html(); wireDash(); return; }
+    if (mainView === 'dash') { paintMain(dashPage2Html()); wireDash(); return; }
     if (!rows.length) {
       // ⚠️ 没数据也要把操作栏渲染出来（用户 2026-10-12 要求"无数据时也是置底状态"）
-      main.innerHTML = '<div class="empty"><div class="big">📋</div>还没有数据，点击左下角「导入粉丝」开始<br><span style="font-size:12px">支持采集报表 .xls / .csv，以及 .txt（格式 ID--昵称，文件名将作为设备名）；可多选多个设备文件一起导入</span></div>' +
-        '<div class="vb-spacer"></div>' + viewBarHtml();
+      paintMain('<div class="empty"><div class="big">📋</div>还没有数据，点击左下角「导入粉丝」开始<br><span style="font-size:12px">支持采集报表 .xls / .csv，以及 .txt（格式 ID--昵称，文件名将作为设备名）；可多选多个设备文件一起导入</span></div>' +
+        '<div class="vb-spacer"></div>' + viewBarHtml());
       refreshSelectionUI();
       return;
     }
@@ -1885,7 +2089,7 @@
     }
     html += '<div class="vb-spacer"></div>';
     html += viewBarHtml();
-    main.innerHTML = html;
+    paintMain(html);
     refreshSelectionUI();
   }
 
@@ -1914,6 +2118,10 @@
     manage: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>',
     grip: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="9" cy="5.5" r="1.7"/><circle cx="15" cy="5.5" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18.5" r="1.7"/><circle cx="15" cy="18.5" r="1.7"/></svg>',
     plus: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+    // 「保持展开」固定键的箭头（2026-10-13 侧栏 rail：固定后旋转 180°）
+    caretRight: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>',
+    // 自定义下拉按钮的小三角
+    caret: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
     trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>',
     // 「恢复」：逆时针回转箭头 —— 把已完成退回「已拉群」（没有群名的退回「未分配」）
     undo: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 4.5 3 10.5 9 10.5"/><path d="M5.1 14.5a8 8 0 1 0 1.6-8.6L3 10.5"/></svg>',
@@ -2017,13 +2225,23 @@
       '<span class="v-group">群组 <b>' + Object.keys(gset).length + '</b></span></div>';
   }
 
+  // 自定义下拉（2026-10-13 第三轮）：**向上弹** ——
+  //   原生 <select> 的弹出方向由浏览器/系统决定，CSS 改不了，窗口一缩就弹到界面外（牛牛反馈）。
+  //   这里用「按钮 + 绝对定位列表（bottom: calc(100% + 6px)）」自己实现，方向完全可控。
+  function ddHtml(id, label, cur, items, act) {
+    var opts = items.map(function (it) {
+      return '<button type="button" class="vb-dd-opt' + (it[0] === cur ? ' on' : '') + '"' +
+        ' data-act="' + act + '" data-v="' + it[0] + '">' + it[1] + '</button>';
+    }).join('');
+    return '<span class="vb-dd" data-dd="' + id + '">' +
+      '<button type="button" class="vb-dd-btn" data-act="ddToggle" data-dd="' + id + '">' +
+      '<span>' + label + '</span>' + ICON.caret + '</button>' +
+      '<div class="vb-dd-list" id="' + id + '" hidden>' + opts + '</div></span>';
+  }
   // 「数据类型」下拉：从哪一类里自下而上挑人。选项顺序见 PICK_TYPES，默认「默认」。
   function typeSelectHtml() {
-    var h = '<select class="vb-select" id="vbType" title="从哪一类数据里自下而上挑人">';
-    PICK_TYPES.forEach(function (t) {
-      h += '<option value="' + t.v + '"' + (pickType === t.v ? ' selected' : '') + '>' + t.label + '</option>';
-    });
-    return h + '</select>';
+    return ddHtml('vbType', typeLabel(pickType), pickType,
+      PICK_TYPES.map(function (t) { return [t.v, t.label]; }), 'pickType');
   }
   // 「修改类型」下拉（2026-10-13 第二轮改版）：选项**跟着「数据类型」变**（牛牛给的对照表）——
   //   数据类型 = 默认   → 5 项全出现（设置群名称 / 设为未分配 / 设为已拉群 / 设为已分配 / 设为已完成）
@@ -2045,10 +2263,7 @@
   };
   function batchSelectHtml() {
     var items = BATCH_MENU[pickType] || BATCH_MENU.all;
-    var h = '<select class="vb-select" id="vbBatch" title="对勾选的数据做批量修改（选项跟着「数据类型」变）">' +
-      '<option value="">选择操作</option>';
-    items.forEach(function (it) { h += '<option value="' + it[0] + '">' + it[1] + '</option>'; });
-    return h + '</select>';
+    return ddHtml('vbBatch', '选择操作', '', items, 'batchPick');
   }
   // 操作栏（数据页，2026-10-13 按牛牛要求**清空重做**，第二轮再微调）：一行 = 三件套 + 右侧统计 ——
   //   ① 数据类型：从哪一类里挑（默认 / 未分配 / 已分配 / 已拉群 / 已完成）——**选中即整类全勾**
@@ -2058,15 +2273,14 @@
   // ⚠️ 原来的 ▢未分配 / ▢已分配 / 群名输入框 / ⚑标记已拉群 已**整块删除**（连 CSS 和背后的函数）。
   function viewBarHtml() {
     return '<div class="view-bar"><div class="vb-row">' +
-      '<label class="vb-lab">数据类型' + typeSelectHtml() + '</label>' +
+      '<span class="vb-lab">数据类型' + typeSelectHtml() + '</span>' +
       // 「选中 N」的 N 是个**可输入的框**，后面跟 ✓ 确定 / ✗ 取消两个线性图标
       '<span class="vb-sel">选中 <input id="selNum" class="vb-num" type="text" inputmode="numeric" autocomplete="off"' +
         ' value="' + selCount() + '" title="填个数字 → 点 ✓ = 按「数据类型」自下而上选中这么多；点 ✗ = 清空所有勾选">' +
         '<button class="vn-act ok" data-act="selNumOk" title="确定：自下而上选中 N 个（回车同）">' + ICON.check + '</button>' +
         '<button class="vn-act no" data-act="selNumNo" title="取消选中：清空所有勾选（Esc 同）">' + ICON.no + '</button></span>' +
       // 「修改类型」：和左边「数据类型」**同款小标签 + 下拉**（牛牛："加小字是在选择操作边上加一个修改类型"）。
-      // 下拉第一项是占位文案「选择操作」，选完自动弹回它。
-      '<label class="vb-lab">修改类型' + batchSelectHtml() + '</label>' +
+      '<span class="vb-lab">修改类型' + batchSelectHtml() + '</span>' +
       '<span class="vb-stats-right">' + vbStatsHtml() + '</span>' +
       '</div></div>';
   }
@@ -2426,12 +2640,10 @@
   // ---------- 批量修改（2026-10-13 新增；第二轮扩成 5 个动作，挂在操作栏「修改类型」下拉上）----------
   // 勾选的行（key 列表）—— 下面这些动作都作用在它上面
   function selKeys() { return Object.keys(selected).filter(function (kk) { return selected[kk]; }); }
-  // 下拉里选了某一项 → 执行对应动作 / 弹对应小窗；**选完立刻复位回占位项**
-  //   ⚠️ 不复位的话，下次再选同一个（比如又点「设为已完成」）不会触发 change —— 下拉当"菜单"用必须这么处理
+  // 下拉里选了某一项 → 执行对应动作 / 弹对应小窗。
+  //   ⚠️ 自定义下拉（2026-10-13 第三轮）不再需要像原生 select 那样「复位回占位项」—— 列表点完自动关。
   //   ⚠️ 选项集合由 BATCH_MENU 按 pickType 给，这里只负责分发（不再有「删除」）。
   function batchPick(v) {
-    var sel = $('vbBatch');
-    if (sel) sel.value = '';
     if (!v) return;
     if (v === 'group') batchSetGroup();
     else if (v === 'launched') batchSetLaunched();
@@ -2769,6 +2981,16 @@
     var t = e.target.closest('[data-act],.dev-item');
     if (!t) return;
 
+    // ---- 操作栏自定义下拉（向上弹）：开 / 关（同时收起另一个）----
+    if (t.getAttribute('data-act') === 'ddToggle') {
+      var ddl = t.parentNode.querySelector('.vb-dd-list');
+      var willOpen = ddl.hidden;
+      ddCloseAll(ddl);
+      ddl.hidden = !willOpen;
+      t.classList.toggle('on', willOpen);
+      return;
+    }
+
     if (t.classList.contains('dev-item')) {
       var dv = t.getAttribute('data-dev');
       // ⚠️ 群视图下点设备**必须**退出群视图 —— 原来只比 filterDevice，
@@ -2789,6 +3011,10 @@
     }
 
     var act = t.getAttribute('data-act'), dev = t.getAttribute('data-dev'), k = t.getAttribute('data-k');
+    // ---- 操作栏自定义下拉的选项 / 侧栏「保持展开」固定键 ----
+    if (act === 'pickType') { onPickType(t.getAttribute('data-v')); return; }
+    if (act === 'batchPick') { ddCloseAll(); batchPick(t.getAttribute('data-v')); return; }
+    if (act === 'togglePin') { sidebarPinned = !sidebarPinned; saveUI(); syncSidebar(); render(); return; }
     // ---- 侧栏底部的三个全局操作：改为主区整页视图（不再弹窗）----
     if (act === 'openImport') { pendingFiles = []; mainView = 'import'; render(); return; }
     // ---- 导入页：移除单个文件 / 取消全部 / 确定导入 ----
@@ -2976,25 +3202,33 @@
       return;
     }
   });
-  // 操作栏的两个下拉（2026-10-13 新增，第二轮改版）：
+  // 操作栏的两个下拉（2026-10-13 第三轮：改成**自定义下拉、向上弹**，见 ddHtml/typeSelectHtml）。
   //   · 数据类型 —— 记下值 + **立刻把这一类整类勾上**（牛牛："数据类型下拉点中既全选该状态的数据"）
   //                 选「已完成」时顺手展开已完成折叠区，否则勾了也看不见
-  //   · 修改类型 —— 选一项就执行 / 弹对应的小窗（batchPick 里会先把下拉复位回占位项）
-  document.addEventListener('change', function (e) {
-    var t = e.target;
-    if (!t || !t.id) return;
-    if (t.id === 'vbType') {
-      pickType = t.value || 'all';
-      autoSelectAll();                       // 同一套口径：和"进数据页自动全选"完全一致
-      if (pickType === 'done') {
-        var dk = groupScope ? GRP_KEY : filterDevice;
-        doneCollapsed[dk] = false;           // 「已完成」藏在折叠区里 → 展开它
-      }
-      render();
-      return;
+  //   · 修改类型 —— 选一项就执行 / 弹对应的小窗
+  // 开关与选择统一走下面两个函数（点击派发在下方「事件委托」里）。
+  function ddCloseAll(except) {
+    Array.prototype.forEach.call(document.querySelectorAll('.vb-dd-list'), function (l) {
+      if (l === except) return;
+      l.hidden = true;
+      var b = l.parentNode.querySelector('.vb-dd-btn');
+      if (b) b.classList.remove('on');
+    });
+  }
+  function onPickType(v) {
+    pickType = v || 'all';
+    autoSelectAll();                         // 同一套口径：和"进数据页自动全选"完全一致
+    if (pickType === 'done') {
+      var dk = groupScope ? GRP_KEY : filterDevice;
+      doneCollapsed[dk] = false;             // 「已完成」藏在折叠区里 → 展开它
     }
-    if (t.id === 'vbBatch') { batchPick(t.value); return; }
-  });
+    ddCloseAll();
+    render();
+  }
+  // 点下拉列表以外的地方 → 收起所有下拉（用捕获阶段，先于下面的 data-act 委托跑）
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest || !e.target.closest('.vb-dd')) ddCloseAll();
+  }, true);
   document.addEventListener('keydown', function (e) {
     if ($('modalMask').classList.contains('show')) return;   // 弹窗打开时，回车一律交给弹窗自己处理（见下方 modalMask 的 keydown）
     if (e.target && e.target.id === 'newDevName' && e.key === 'Enter') {
@@ -3132,6 +3366,8 @@
     render();
     if (!added) toast('这些文件已经在列表里了');
   }
+  // velora file-drop 的上传图标（28px / stroke 1.5，原版一模一样）
+  var DROP_ICON = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M8 7l4-4 4 4"/><path d="M3 15v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4"/></svg>';
   function importPageHtml() {
     var list = '';
     if (pendingFiles.length) {
@@ -3146,8 +3382,9 @@
         '<button class="btn" data-act="impClear">取消</button></div>'
       : '<div class="imp-acts muted">还没有选择文件 —— 拖进来或点上面的框选文件</div>';
     return '<div class="page-wrap"><div class="page-card">' + pageHead('导入粉丝') +
-      '<div class="page-body"><div class="dropzone" id="dropzone"><span class="dz-big">📄</span>把文件拖到这里，或点击选择文件' +
-      '<div class="dz-sub">支持 .xls / .csv / .txt / .html，可一次选多个；确认无误后再点「确定导入」</div></div>' +
+      '<div class="page-body"><div class="dropzone" id="dropzone">' + DROP_ICON +
+      '<span class="dz-main">把文件拖到这里，或点击选择文件</span>' +
+      '<span class="dz-sub">支持 .xls / .csv / .txt / .html，可一次选多个；确认无误后再点「确定导入」</span></div>' +
       list + acts + '</div></div></div>';
   }
   // 导入页每次重绘后都要重新挂监听（主区会被 innerHTML 整个换掉）
@@ -3300,7 +3537,11 @@
   // ⚠️ 原版默认 32×32 放进小 demo 容器够用；**铺满整页就不够了**（四角会露出菱形的斜边），
   //    所以这里按窗口实算，下限 32（原版）、上限 80 防止大屏上 DOM 爆炸。
   function bgSide() {
-    var W = Math.max(320, window.innerWidth - 232);    // 右主区宽（侧栏固定 232px）
+    // ⚠️ 2026-10-13：侧栏改成 rail（收起 64 / 悬停 232）→ **不能再写死 232**！
+    //    写死会在侧栏收起时少算 168px，网格盖不满、四角露出斜边（回归测试抓到过）。
+    //    直接量主区实际宽度最稳 —— 主区宽度**不随侧栏悬停变化**（展开走负 margin 覆盖，不挤压主区）。
+    var mainEl = document.getElementById('main');
+    var W = Math.max(320, mainEl ? mainEl.clientWidth : (window.innerWidth - 64));
     var H = Math.max(320, window.innerHeight);         // 右主区高（仪表盘撑满一屏）
     var need = 0.7071 * W + 1.219 * H + 2 * BG_CELL;   // 末尾 +2 格余量
     return Math.max(32, Math.min(Math.ceil(need / BG_CELL), 80));
@@ -3583,6 +3824,7 @@
   });
   load();
   render();
+  initSidebarRail();          // 侧栏 rail：悬停 / 键盘聚焦自动展开（2026-10-13 第三轮）
   // 名单库：先读本机缓存立刻可用（断网也行），云端再在后台比对版本号
   initRoster().then(function () {
     if (rosterSet.size) render();                       // 缓存命中 → 立刻把红标补上
