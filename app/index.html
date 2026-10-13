@@ -2257,9 +2257,9 @@
   var BATCH_MENU = {
     all:      [['group', '设置群名称'], ['unassign', '设为未分配'], ['launched', '设为已拉群'], ['assign', '设为已分配'], ['done', '设为已完成']],
     none:     [['group', '设置群名称']],
-    pending:  [['unassign', '设为未分配'], ['launched', '设为已拉群']],
-    launched: [['assign', '设为已分配'], ['done', '设为已完成']],
-    done:     [['restore', '设为已拉群']]
+    pending:  [['unassign', '退回未分配'], ['launched', '设为已拉群']],
+    launched: [['assign', '退回已分配'], ['done', '设为已完成']],
+    done:     [['restore', '退回已拉群']]
   };
   function batchSelectHtml() {
     var items = BATCH_MENU[pickType] || BATCH_MENU.all;
@@ -2407,30 +2407,20 @@
       headDelHtml(dev) + '</tr></thead>';
   }
 
-  // 「已完成」区的排序（牛牛 2026-10-13 定稿）：
-  //   ① **同群的数据都在一起** —— 先按群名聚簇，簇内保持列表原始顺序（= 导入正序，跟未分配一样）
-  //   ② 簇与簇之间按**交单 / 完成先后倒序** —— 比的是簇内最新那条的 doneAt（同一次交单 = 同一个戳）
-  //   ③ 完成时间相同 → 再按**群创建顺序**（grpOrderList()）排，保证结果稳定可复现
-  // 老数据没有 doneAt（视作 0）→ 整簇沉到最底下，符合"老数据沉最下"的直觉。
-  // ⚠️ 未完成区**不排**，保持导入正序（rows.filter / sort(稳定) 天然保序）。
+  // 「已完成」区的排序（牛牛 2026-10-13 改口定稿）：
+  //   **以「原（未分配）顺序」为主，只把同群名的归在一起** ——
+  //     ① 先按群名聚簇，簇内保持列表原始顺序（= 导入正序，跟未分配一样）
+  //     ② 簇与簇之间按**簇内第一条在原始列表里的位次**排
+  //   ⚠️ 不再按 doneAt（交单/完成时间）倒序 —— doneAt 字段还留着（撤销快照要用），只是不参与排序。
+  //   ⚠️ 未完成区**不排**，保持导入正序（rows.filter / sort(稳定) 天然保序）。
   function sortDoneRows(list) {
-    var pos = {};
-    grpOrderList().forEach(function (g, i) { pos[g] = i; });
     var clusters = [], m = {};
-    list.forEach(function (r) {
+    list.forEach(function (r, i) {
       var g = r.group || '';
-      if (!(g in m)) { m[g] = { key: g, t: -1, rows: [] }; clusters.push(m[g]); }
+      if (!(g in m)) { m[g] = { key: g, i: i, rows: [] }; clusters.push(m[g]); }
       m[g].rows.push(r);
-      var t = r.doneAt || 0;
-      if (t > m[g].t) m[g].t = t;
     });
-    clusters.sort(function (a, b) {
-      if (a.t !== b.t) return b.t - a.t;                        // 完成时间倒序（最近交单的在最上面）
-      var pa = (a.key in pos) ? pos[a.key] : 1e6;
-      var pb = (b.key in pos) ? pos[b.key] : 1e6;
-      if (pa !== pb) return pa - pb;                            // 同批 → 按群创建顺序
-      return a.key < b.key ? -1 : (a.key > b.key ? 1 : 0);
-    });
+    clusters.sort(function (a, b) { return a.i - b.i; });       // 首次出现的位置 → 整体保持原顺序
     var out = [];
     clusters.forEach(function (c) { out = out.concat(c.rows); });
     return out;
