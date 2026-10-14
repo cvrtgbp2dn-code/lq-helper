@@ -4,6 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>拉群小助手 · 私域拉群进度管理</title>
+<script>
+  /* ⚠️ 2026-10-15 主题必须**在首屏渲染前**就定下来 ——
+     暗色用户如果等主脚本跑完再打标记，每次打开都会先闪一下白。
+     所以在 <head> 里（主脚本之前）直接读一次 UI 状态，把 data-theme 打上。
+     ⚠️ 键名/字段要和主脚本里的 LS_UI + saveUI() 保持一致（lq_helper_ui_v2.theme）。 */
+  (function () {
+    try {
+      var u = JSON.parse(localStorage.getItem('lq_helper_ui_v2') || '{}') || {};
+      if (u.theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    } catch (e) {}
+  })();
+</script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -23,12 +35,72 @@
        超宽屏下数据卡片 + 操作栏**一起**被这个宽度卡住并居中，两者左右边缘永远对齐。
        ⚠️ 它必须 ≥ 表格的 min-width(880px)，否则窄屏会把卡片卡得比表格还窄。 */
     --content-max: 1170px;
+    /* ⚠️ 2026-10-15 暗色模式：以下「表面色」是**新收进变量**的（原来散在各处写死）。
+       想加新的颜色，一律先在这里开变量 —— 别在规则里写死，否则暗色下会漏掉。 */
+    --panel: #ffffff;         /* 页面里的白卡片 / 弹窗 / 输入框 / 白底按钮 */
+    --row-hover: #eef3ff;     /* 表格整行悬停 */
+    --cell-hover: #dbe7ff;    /* 可编辑单元格悬停（比整行深一档） */
+    --loc-hit: #c3d7ff;       /* 搜索定位高亮 */
+    --row-done: #fbfdfb;      /* 「已完成」行的底色 */
+    --sel-bg: #f4f7ff;        /* 下拉选中项 / 卡片选中态 */
+    --drop-bg: #fafbfe;       /* 拖放区 / 未选中卡片底色 */
+    --sep: #ccd3dd;           /* 统计栏里的分隔点 */
+    --dot: #c6cedb;           /* 空状态里的小圆点 */
+    --shadow: rgba(20,30,50,.28);   /* 弹窗投影 */
   }
+  /* ⚠️ velora 原版组件专用配色（仪表盘背景网格 / 胶囊搜索框 / 结果列表 / 拖放区）——
+     牛牛当初的要求是「照抄原版」「百分百还原」，所以**亮色下必须逐字等于原值**，
+     暗色才换。⚠️ 别把它们并进 --panel/--line 那套：两边原值**并不相同**
+     （--line 是 #e6e8ec，velora 用的是 #e5e5e5），并进去亮色下就不再是原版了。
+     （2026-10-15 暗色适配时踩过：测试一眼抓出假 placeholder 颜色从 #737373 变成了 #8a94a6。） */
+  html {
+    /* ⚠️ 2026-10-15：**原生滚动条 / 原生表单控件**（勾选框、下拉箭头…）不认 background 那套变量，
+       得靠 color-scheme 告诉浏览器"现在是亮色还是暗色"。不加的话暗色下：
+       侧栏设备列表、群组列表、数据表的原生滚动条全是**白的**（实测被抓到）。 */
+    color-scheme: light;
+    --vl-panel: #ffffff; --vl-line: #e5e5e5; --vl-divider: #f2f4f7;
+    --vl-focus: #a1a1a1; --vl-text: #0a0a0a; --vl-ghost: #737373;
+    --vl-hoverline: #b4b4b4; --vl-soft: #fafafa;
+  }
+  /* ⚠️ 2026-10-15 暗色模式：只覆盖变量，不动任何规则。
+     主题标记打在 <html data-theme="dark">，由 <head> 里那段内联脚本**在首屏渲染前**设好（避免闪白）。
+     ⚠️ 新增规则时如果写了写死的颜色，暗色下就会漏 —— 所以一律走变量。 */
+  html[data-theme="dark"] {
+    color-scheme: dark;                      /* ← 原生滚动条/勾选框跟着变深（见上面 html{} 里的说明） */
+    --bg: #14171c;
+    --side: #191d23;
+    --card: #1b1f26;
+    --thead: #232830;
+    --hover: #262b34;
+    --line: #2d333c;
+    --text: #e6e9ef;
+    --muted: #8b95a5;
+    --brand: #5b8cff; --brand-d: #7ba3ff;
+    --orange: #e8a33d; --orange-bg: #3a2d18; --green: #34c38f; --green-bg: #14311f;
+    --gray-bg: #262b34; --red: #e46b66; --red-bg: #3a1f1e;
+    --purple: #9b86f0; --purple-bg: #2a2440;
+    --panel: #1b1f26;
+    --row-hover: #232a3a;
+    --cell-hover: #2b3550;
+    --loc-hit: #3a4a72;
+    --row-done: #181c22;
+    --sel-bg: #232c44;
+    --drop-bg: #1d222a;
+    --sep: #4a5364;
+    --dot: #4a5364;
+    --shadow: rgba(0,0,0,.5);
+    --vl-panel: #1b1f26; --vl-line: #2d333c; --vl-divider: #262b34;
+    --vl-focus: #5b8cff; --vl-text: #e6e9ef; --vl-ghost: #8b95a5;
+    --vl-hoverline: #4a5364; --vl-soft: #1d222a;
+  }
+  /* 暗色下两处"本来就深/本来就糊"的东西单独微调（它们不用变量、也不该跟着变量走） */
+  html[data-theme="dark"] .toast { border: 1px solid rgba(255,255,255,.10); }   /* 深底色上给个描边，别糊进背景 */
+  html[data-theme="dark"] .modal-mask { background: rgba(0,0,0,.62); }           /* 遮罩再压暗一点 */
   body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
 
   /* 布局：整页只有两块 —— 左侧栏 + 右主区。
      原来的顶栏和工具栏已取消：标题进了侧栏顶部，全局操作进了侧栏底部，搜索进了操作栏。 */
-  .btn { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; color: var(--text); transition: .15s; }
+  .btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; color: var(--text); transition: .15s; }
   .btn:hover { border-color: var(--brand); color: var(--brand); }
   .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
   .btn.primary:hover { background: var(--brand-d); }
@@ -54,8 +126,16 @@
   .sidebar { width: 232px; flex-shrink: 0; position: sticky; top: 0; height: 100vh; overflow: hidden;
              background: var(--side); border-right: 1px solid var(--line);
              display: flex; flex-direction: column; padding: 16px 12px 12px; }
-  .side-head { flex-shrink: 0; padding: 0 8px 14px; border-bottom: 1px solid var(--line); margin-bottom: 10px; text-align: center; }
+  .side-head { flex-shrink: 0; position: relative; padding: 0 8px 14px; border-bottom: 1px solid var(--line); margin-bottom: 10px; text-align: center; }
   .side-head h1 { font-size: 16px; font-weight: 700; letter-spacing: .3px; text-align: center; }
+  /* 亮色/暗色切换（2026-10-15）：侧栏标题右边一个小图标。
+     ⚠️ 用**绝对定位** → 侧栏收起成 64px 窄条时它也不会被「文字隐形」那一套规则藏掉
+     （它**不在** `.sidebar:not(.expand) ... { visibility:hidden }` 那个选择器列表里）。 */
+  .theme-tg { position: absolute; top: -2px; right: 2px; width: 26px; height: 26px; border: none; background: none;
+              color: var(--muted); cursor: pointer; border-radius: 7px; padding: 0;
+              display: inline-flex; align-items: center; justify-content: center; transition: .15s; }
+  .theme-tg:hover { color: var(--brand); background: var(--hover); }
+  .theme-tg svg { display: block; }
   /* 设备列表区：**不再吃满剩余空间**（原来是 flex:1）——
      牛牛要求群组列表「贴在设备列表的下方」，吃满的话它会被顶到底部去。
      现在按内容高走（flex:0 1 auto），太长时才收缩 + 内部滚。
@@ -82,7 +162,7 @@
   .dev-item:hover svg { color: var(--ac, var(--brand)); }
   .dev-item .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dev-item .cnt { font-size: 12px; color: var(--muted); background: var(--gray-bg); border-radius: 10px; padding: 1px 8px; flex-shrink: 0; position: relative; }
-  .dev-item.active .cnt { background: #fff; color: var(--brand-d); }
+  .dev-item.active .cnt { background: var(--panel); color: var(--brand-d); }
   /* 红点：该设备「有不在库 或 已分配」时的提醒（贴数字胶囊右上角，半悬在外）。
      ⚠️ 必须绝对定位 —— 否则会把数字挤动车（用户对像素级跳动很敏感）。 */
   .dev-item .cnt .dot { position: absolute; top: -2px; right: -3px; width: 6px; height: 6px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 1.5px var(--side); pointer-events: none; }
@@ -153,7 +233,7 @@
   /* 「数据类型 / 修改类型」：一句小标签 + 一个下拉，和整条操作栏同一套圆角 / 描边 / 字号 */
   .view-bar .vb-lab { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); white-space: nowrap; }
   .view-bar .vb-select { height: 32px; box-sizing: border-box; padding: 0 30px 0 12px; border: 1px solid var(--line);
-                         border-radius: 8px; background-color: #fff; color: var(--text); font: inherit; font-size: 13px;
+                         border-radius: 8px; background-color: var(--panel); color: var(--text); font: inherit; font-size: 13px;
                          cursor: pointer; outline: none; transition: .15s; white-space: nowrap;
                          -webkit-appearance: none; -moz-appearance: none; appearance: none;
                          background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b93a3' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
@@ -168,7 +248,7 @@
   .view-bar .vb-sel { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; color: var(--muted); white-space: nowrap; }
   .view-bar .vb-num { width: 48px; height: 28px; box-sizing: border-box; text-align: center; padding: 0 4px;
                       font: inherit; font-size: 13px; font-weight: 700; color: var(--text);
-                      border: 1px solid var(--line); border-radius: 7px; background: #fff; outline: none; }
+                      border: 1px solid var(--line); border-radius: 7px; background: var(--panel); outline: none; }
   .view-bar .vb-num::-webkit-outer-spin-button, .view-bar .vb-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .view-bar .vb-num:focus { border-color: var(--brand); box-shadow: 0 0 0 2px rgba(59, 110, 240, .14); }
   /* 输入框里的数和「当前已选」不一致时亮起来，提示"还没按对号" */
@@ -201,7 +281,7 @@
   .grp-item .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .grp-item .cnt { font-size: 12px; color: var(--muted); background: var(--gray-bg); border-radius: 10px;
                    padding: 1px 8px; flex-shrink: 0; }
-  .grp-item.active .cnt { background: #fff; color: var(--brand-d); }
+  .grp-item.active .cnt { background: var(--panel); color: var(--brand-d); }
   /* 「已完成群组 (N)」：侧栏里的小折叠头（默认折叠，手动展开/收起），比主标题小一号、更弱化 */
   .grp-sub { display: flex; align-items: center; gap: 7px; width: 100%; border: none; background: none;
              border-radius: 8px; padding: 8px 10px; font-size: 13px; font-family: inherit; color: var(--muted);
@@ -218,7 +298,7 @@
 
   /* 跳转后高亮那一行（用 !important 盖住 row-done 的底色），3 秒后淡出。
      ⚠️ 颜色要比「悬停深档」(#dbe7ff) 再深一档，否则跳转高亮和鼠标悬停看起来一模一样。 */
-  tr.loc-hit > td { background: #c3d7ff !important; transition: background .5s; }
+  tr.loc-hit > td { background: var(--loc-hit) !important; transition: background .5s; }
 
   /* 统计（总人数/本组人数 · 不在库 · 已分配 · 群组），配色与各处保持一致 */
   /* ⚠️ 2026-10-13：窗口太窄时统计**被省略号收尾**（而不是把操作栏折成两行、也不是硬裁一半）。
@@ -227,7 +307,7 @@
      它的父级 .vb-stats-right 允许收缩（flex-shrink 默认 1 + min-width:0 + overflow:hidden）。 */
   .vb-stats { display: block; font-size: 13px; color: var(--muted); white-space: nowrap;
               min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .vb-stats .sep { margin: 0 6px; color: #ccd3dd; }
+  .vb-stats .sep { margin: 0 6px; color: var(--sep); }
   .vb-stats b { font-weight: 700; color: var(--text); }
   .vb-stats .v-ool b { color: var(--red); }
   .vb-stats .v-pending b { color: var(--orange); }
@@ -276,12 +356,12 @@
      ① 整行 → #eef3ff（原来的浅档 #f7f9fd 几乎看不出，已弃用）
      ② 鼠标所在的那一格（群名称/数据昵称/数据ID）→ #dbe7ff，再深一档
      这样"整行在哪"和"鼠标在哪格"一眼分得开，拉群时不会看错行。 */
-  tr:hover td { background: #eef3ff; }
-  tr.row-done td { color: var(--muted); background: #fbfdfb; }
+  tr:hover td { background: var(--row-hover); }
+  tr.row-done td { color: var(--muted); background: var(--row-done); }
   td.date { color: var(--muted); }
   td[data-field] { cursor: text; }
   /* ⚠️ 必须排在 tr:hover td 之后（同优先级时后来者胜） */
-  td[data-field]:hover { background: #dbe7ff; }
+  td[data-field]:hover { background: var(--cell-hover); }
   /* 设备名那一格：左边一条竖色条，颜色 = 侧栏那台设备的**线性图标色**（JS 内联给 --dc），底色保持白底。
      ⚠️ 2026-10-12 牛牛反馈「整格填充颜色太深、全填充不舒服」→ 由整格填色改成左侧竖条；
         又反馈「竖条太长」→ 高度收到 1em（= 字号 14px，和文字一样高）、垂直居中。
@@ -291,7 +371,7 @@
                         width: 4px; height: 1em; border-radius: 2px; background: var(--dc, transparent); }
   /* 编辑态：单元格内边距归零，让输入框原样铺满整格（尺寸与文字位置都不动，内边距由输入框自己承担） */
   td.editing { padding: 0; }
-  .cell-edit { display: block; box-sizing: border-box; width: 100%; height: 100%; min-width: 0; font: inherit; font-size: 14px; border: none; border-radius: 0; padding: 5px 12px; outline: 2px solid var(--brand); outline-offset: -2px; background: #fff; }
+  .cell-edit { display: block; box-sizing: border-box; width: 100%; height: 100%; min-width: 0; font: inherit; font-size: 14px; border: none; border-radius: 0; padding: 5px 12px; outline: 2px solid var(--brand); outline-offset: -2px; background: var(--panel); }
 
   .badge { display: inline-block; font-size: 12px; border-radius: 10px; padding: 2px 10px; }
   .badge.none { background: var(--gray-bg); color: var(--muted); }
@@ -311,14 +391,14 @@
   .row-del:hover { color: var(--red); background: var(--red-bg); }
   th.col-del .row-del { color: var(--muted); }
 
-  .done-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #fff; padding-right: 10px; }
+  .done-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--panel); padding-right: 10px; }
   .done-toggle { flex: 1; display: block; text-align: left; border: none; background: none; padding: 8px 10px; font-size: 12px; color: var(--muted); cursor: pointer; }
   .done-toggle:hover { color: var(--brand); }
   .done-act { border: none; background: none; cursor: pointer; font-size: 12px; color: var(--muted); padding: 3px 8px; border-radius: 5px; white-space: nowrap; }
-  .done-act:hover { background: #e7ecf5; color: var(--brand); }
-  .done-act.del:hover { color: var(--red); background: #fdeceb; }
+  .done-act:hover { background: var(--hover); color: var(--brand); }
+  .done-act.del:hover { color: var(--red); background: var(--red-bg); }
   /* 「恢复」按钮（垃圾桶左边）：hover 走绿色，和「删除」的红色区分开 */
-  .done-act.undo:hover { color: var(--green); background: #e5f6ef; }
+  .done-act.undo:hover { color: var(--green); background: var(--green-bg); }
   tr.done-divider td { padding: 0; }
   .done-wrap.collapsed { display: none; }
 
@@ -329,7 +409,7 @@
   /* 自定义弹窗 */
   .modal-mask { position: fixed; inset: 0; background: rgba(20,28,42,.42); display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
   .modal-mask.show { display: flex; }
-  .modal-card { background: #fff; border-radius: 14px; width: 100%; max-width: 440px; box-shadow: 0 18px 50px rgba(20,30,50,.28); overflow: hidden; }
+  .modal-card { background: var(--panel); border-radius: 14px; width: 100%; max-width: 440px; box-shadow: 0 18px 50px var(--shadow); overflow: hidden; }
   .modal-head { padding: 18px 22px 0; font-size: 16px; font-weight: 700; }
   .modal-body { padding: 12px 22px 4px; font-size: 14px; color: var(--text); line-height: 1.75; }
   .modal-body .muted { color: var(--muted); font-size: 13px; }
@@ -337,14 +417,14 @@
   .modal-input { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; font-size: 14px; outline: none; margin-top: 10px; }
   .modal-input:focus { border-color: var(--brand); }
   .modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 18px 22px; }
-  .dropzone { border: 1.5px dashed var(--line); border-radius: 12px; padding: 30px 16px; text-align: center; color: var(--muted); cursor: pointer; transition: .15s; background: #fafbfe; }
+  .dropzone { border: 1.5px dashed var(--line); border-radius: 12px; padding: 30px 16px; text-align: center; color: var(--muted); cursor: pointer; transition: .15s; background: var(--drop-bg); }
   .dropzone:hover { border-color: var(--brand); color: var(--brand); }
-  .dropzone.over { border-color: var(--brand); background: #eef3ff; color: var(--brand); }
+  .dropzone.over { border-color: var(--brand); background: var(--row-hover); color: var(--brand); }
   .dropzone .dz-big { font-size: 32px; display: block; margin-bottom: 10px; }
   .dropzone .dz-sub { font-size: 12px; margin-top: 6px; }
   /* 导入页：待导入文件列表（可逐个 × 掉）+ 确定/取消 */
   .imp-list { margin-top: 16px; display: flex; flex-direction: column; gap: 6px; }
-  .imp-item { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--line);
+  .imp-item { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--line);
               border-radius: 8px; padding: 9px 12px; font-size: 13px; }
   .imp-item .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .imp-item .sz { flex-shrink: 0; color: var(--muted); font-size: 12px; }
@@ -381,8 +461,8 @@
   /* 「库管理」弹窗里的三个来源选项 */
   .rs-opt { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; cursor: pointer; transition: .15s; }
   .rs-opt:last-child { margin-bottom: 0; }
-  .rs-opt:hover { border-color: #c9d6f0; background: #fafbfe; }
-  .rs-opt.on { border-color: var(--brand); background: #f4f7ff; }
+  .rs-opt:hover { border-color: var(--line); background: var(--drop-bg); }
+  .rs-opt.on { border-color: var(--brand); background: var(--sel-bg); }
   .rs-radio { flex-shrink: 0; width: 16px; height: 16px; border: 1.5px solid #c2cbdb; border-radius: 50%; margin-top: 2px; position: relative; box-sizing: border-box; }
   .rs-opt.on .rs-radio { border-color: var(--brand); }
   .rs-opt.on .rs-radio::after { content: ""; position: absolute; left: 3px; top: 3px; right: 3px; bottom: 3px; border-radius: 50%; background: var(--brand); }
@@ -421,7 +501,7 @@
   .exp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; }
   @media (max-width: 820px) { .exp-grid { grid-template-columns: 1fr; } }
   .exp-col { display: flex; flex-direction: column; min-width: 0;
-             border: 1px solid var(--line); border-radius: 10px; padding: 15px 17px 17px; background: #fff; }
+             border: 1px solid var(--line); border-radius: 10px; padding: 15px 17px 17px; background: var(--panel); }
   .exp-col .eh { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
   .exp-col .eh .tag { font-size: 11px; font-weight: 600; border-radius: 999px; padding: 1px 9px; flex-shrink: 0; }
   .exp-col .eh .tag.a { background: var(--orange-bg); color: var(--orange); }
@@ -433,7 +513,7 @@
   .exp-col .elist li { position: relative; padding-left: 13px; margin-top: 6px; line-height: 1.55; }
   .exp-col .elist li:first-child { margin-top: 0; }
   .exp-col .elist li::before { content: ''; position: absolute; left: 1px; top: 8px;
-                               width: 4px; height: 4px; border-radius: 50%; background: #c6cedb; }
+                               width: 4px; height: 4px; border-radius: 50%; background: var(--dot); }
   .exp-col .elist b { color: var(--text); font-weight: 700; }
   .exp-col .elist b.n { color: var(--brand); }
   .exp-col .go { margin-top: auto; padding-top: 16px; }
@@ -474,11 +554,11 @@
                      mask-image: linear-gradient(to bottom, transparent, #000 25%, #000 75%, transparent); }
   /* 网格本体：居中 + **纵向压扁 58% + 逆时针转 45°** = 那个斜着的等距视角（原版一模一样） */
   .dash-grid { position: absolute; top: 50%; left: 50%; display: grid;
-               border-top: 1px solid #e5e5e5; border-left: 1px solid #e5e5e5;
+               border-top: 1px solid var(--vl-line); border-left: 1px solid var(--vl-line);
                transform: translate(-50%, -50%) scaleY(.58) rotate(-45deg); }
   /* 单个格子：平时只有「右 + 下」两条细线；指针划过 → **立刻**亮成随机品牌色，移开后 1.4s 慢慢褪回。
      ⚠️ hover 里那句 transition-duration:0s 是关键：进 = 瞬时，出 = 1.4s（原版就是这个手感）。 */
-  .dash-cell { border-right: 1px solid #e5e5e5; border-bottom: 1px solid #e5e5e5;
+  .dash-cell { border-right: 1px solid var(--vl-line); border-bottom: 1px solid var(--vl-line);
                transition: background-color 1400ms ease-out; }
   .dash-cell:hover { background: var(--tint); transition-duration: 0s; }
 
@@ -488,16 +568,16 @@
   .vform { position: relative; pointer-events: auto; display: flex; align-items: center;
            width: 100%; max-width: 512px; height: 48px;
            padding-left: 20px; padding-right: 6px;
-           background: #fff; border: 1px solid #e5e5e5; border-radius: 9999px;
+           background: var(--vl-panel); border: 1px solid var(--vl-line); border-radius: 9999px;
            transition: box-shadow .15s; }
-  .vform:focus-within { box-shadow: 0 0 0 2px #a1a1a1; }
+  .vform:focus-within { box-shadow: 0 0 0 2px var(--vl-focus); }
   .vinput { flex: 1; min-width: 0; height: 100%; border: none; outline: none; background: none;
-            font-family: inherit; font-size: 14px; color: #0a0a0a; }
+            font-family: inherit; font-size: 14px; color: var(--vl-text); }
   /* 假 placeholder：::placeholder 是改不了文字的，所以原版就是盖一层绝对定位的 span。
      进出场：旧条「上滑 8px + 淡出」→ 换字 →（无过渡）落到「下方 8px + 透明」→ 新条「滑到 0 + 淡入」，各 250ms。 */
   .vghost { position: absolute; left: 20px; top: 0; height: 100%;
             display: flex; align-items: center; overflow: hidden; pointer-events: none;
-            font-size: 14px; color: #737373;
+            font-size: 14px; color: var(--vl-ghost);
             transition: transform .25s ease-out, opacity .25s ease-out; }
   .vghost[hidden] { display: none; }
   .vghost.enter { transition: none; transform: translateY(8px); opacity: 0; }
@@ -509,21 +589,21 @@
   .vbtn:disabled { opacity: .4; cursor: default; }
   /* 结果列表：往下弹（仪表盘空间大，不需要像操作栏那样向上弹） */
   .bs-list { position: absolute; top: 100%; left: 0; right: 0; margin-top: 12px; z-index: 30;
-             background: #fff; border: 1px solid #e5e5e5; border-radius: 11px; overflow: hidden;
-             box-shadow: 0 14px 40px rgba(31, 39, 51, .11); }
+             background: var(--vl-panel); border: 1px solid var(--vl-line); border-radius: 11px; overflow: hidden;
+             box-shadow: 0 14px 40px var(--shadow); }
   .bs-list[hidden] { display: none; }
   .bs-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; font-size: 14.5px; transition: background .12s; }
-  .bs-item + .bs-item { border-top: 1px solid #f2f4f7; }
-  .bs-item:hover, .bs-item.active { background: #f4f7ff; }
+  .bs-item + .bs-item { border-top: 1px solid var(--vl-divider); }
+  .bs-item:hover, .bs-item.active { background: var(--sel-bg); }
   .bs-item .bn { font-weight: 600; flex-shrink: 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bs-item .bi { flex: 1; min-width: 0; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bs-none { padding: 13px 16px; color: var(--muted); font-size: 13px; }
 
   /* 跳转后高亮那一行 */
-  tr.loc-hit > td { background: #d9e6ff !important; transition: background .5s; }
-  .page-body .rs-opt { background: #fff; }
+  tr.loc-hit > td { background: var(--loc-hit) !important; transition: background .5s; }
+  .page-body .rs-opt { background: var(--panel); }
   /* 管理设备：每行一个设备 + 拖拽手柄 + 改名/删除（排序靠拖拽，不再用上下箭头） */
-  .mg-row { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-bottom: 8px; }
+  .mg-row { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-bottom: 8px; }
   .mg-row[draggable="true"] { cursor: grab; }
   .mg-row.dragging { opacity: .4; }
   .mg-row.drag-over { box-shadow: inset 0 2px 0 var(--brand); }
@@ -563,11 +643,11 @@
 
   /* ---- ③ file-drop（导入页拖拽区）---- */
   .dropzone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-              border: 2px dashed #e5e5e5; border-radius: 16px; padding: 40px 20px; text-align: center;
-              background: #fff; cursor: pointer;
+              border: 2px dashed var(--vl-line); border-radius: 16px; padding: 40px 20px; text-align: center;
+              background: var(--vl-panel); cursor: pointer;
               transition: transform .2s, border-color .2s, background .2s, box-shadow .2s, color .2s; }
-  .dropzone:hover { border-color: #b4b4b4; background: #fafafa; }
-  .dropzone.over { border-color: var(--vl-from); background: color-mix(in oklab, var(--vl-from) 5%, #fff);
+  .dropzone:hover { border-color: var(--vl-hoverline); background: var(--vl-soft); }
+  .dropzone.over { border-color: var(--vl-from); background: color-mix(in oklab, var(--vl-from) 5%, var(--vl-panel));
                    transform: translateY(-2px);
                    box-shadow: 0 10px 15px -3px rgba(23, 93, 252, .10), 0 4px 6px -4px rgba(23, 93, 252, .10); }
   .dropzone svg { color: var(--muted); transition: color .2s; }
@@ -581,14 +661,14 @@
   /* ---- ④ 操作栏自定义下拉（**向上弹**，替代原生 select）---- */
   .vb-dd { position: relative; display: inline-flex; }
   .vb-dd-btn { display: inline-flex; align-items: center; gap: 8px; height: 32px; box-sizing: border-box;
-               padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff;
+               padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
                color: var(--text); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; transition: .15s; }
   .vb-dd-btn:hover, .vb-dd-btn.on { border-color: var(--brand); }
   .vb-dd-btn svg { color: var(--muted); flex-shrink: 0; transition: transform .15s; }
   .vb-dd-btn.on svg { transform: rotate(180deg); }
   .vb-dd-list { position: absolute; bottom: calc(100% + 6px); left: 0; min-width: 100%; z-index: 40;
-                background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 4px;
-                box-shadow: 0 12px 30px rgba(31, 39, 51, .13);
+                background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px;
+                box-shadow: 0 12px 30px var(--shadow);
                 animation: ddIn .18s ease-out; }
   .vb-dd-list[hidden] { display: none; }
   /* ⚠️ 展开动效抄 velora「navbar-menu」的面板入场：opacity 0→1 + translateY(6px)→0 + scale(.97)→1，.18s easeOut。
@@ -599,7 +679,7 @@
   .vb-dd-opt { display: block; width: 100%; text-align: left; border: none; background: none; font: inherit;
                font-size: 13px; color: var(--text); padding: 7px 10px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
   .vb-dd-opt:hover { background: var(--hover); }
-  .vb-dd-opt.on { color: var(--brand); font-weight: 600; background: #f4f7ff; }
+  .vb-dd-opt.on { color: var(--brand); font-weight: 600; background: var(--sel-bg); }
   /* 用户系统设了「减少动态效果」→ 提示条不弹入、下拉面板不淡入（直接出现） */
   @media (prefers-reduced-motion: reduce) {
     .toast, .toast.show { transition: opacity .01ms; transform: translateX(-50%); }
@@ -608,13 +688,13 @@
 
   /* ---- ⑤ moving-border（主要动作按钮：光斑沿边框跑）---- */
   .mb-btn { position: relative; display: inline-flex; align-items: center; justify-content: center;
-            overflow: hidden; background: #fff; border: none; border-radius: 8px; padding: 1px; cursor: pointer; }
+            overflow: hidden; background: var(--panel); border: none; border-radius: 8px; padding: 1px; cursor: pointer; }
   .mb-glow { position: absolute; inset: 0; pointer-events: none; }
   .mb-light { position: absolute; width: 90px; aspect-ratio: 1;
               background: radial-gradient(circle, var(--vl-via), transparent 65%);
               offset-path: rect(0 auto auto 0 round 8px); animation: lq-mb 4s linear infinite; }
   .mb-inner { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-              border: 1px solid var(--line); border-radius: 7px; background: #fff;
+              border: 1px solid var(--line); border-radius: 7px; background: var(--panel);
               padding: 8px 16px; font: inherit; font-size: 13px; color: var(--text); white-space: nowrap; }
   .mb-btn:hover .mb-inner { border-color: var(--brand); color: var(--brand); }
   .mb-btn:disabled { cursor: not-allowed; }
@@ -713,6 +793,13 @@
   // 群组**创建顺序**（群名第一次被填写的先后）—— 侧栏「群组列表」和导出都按它排（2026-10-13 新增）
   // ⚠️ 新键，不影响任何老数据；老用户升级后第一次填群名才开始记录，历史群按"首条数据的位置"兜底
   var LS_GRP = 'lq_helper_grp_order_v2';
+  // 「已归档」的数据ID 名单（2026-10-15 新增）—— 按**设备**分开存：{ 设备名: [ID, ID, ...] }
+  //   用途：导出后自动把「超出 2 个群组的已完成数据」从 rows 里移走，但把它们的**数据ID**留下来，
+  //   这样同样的数据下次再导入**不会又被加回来**（去重）。
+  //   ⚠️ 必须**按设备**分开：删掉某台设备（想重做）时要能把它的名单一起清掉，
+  //      否则重新导入那台设备的老数据会一条都进不来（"新增 0 条"）。
+  //   ⚠️ 新键，不影响任何老数据。
+  var LS_USED = 'lq_helper_used_ids_v1';
 
   /** 数据行: {k, id, nick, device, dtype, date, group, status} status: none|pending|done
    *  k = 行内部唯一键（稳定，不随 id 修改而变），用于勾选与拖拽 */
@@ -741,6 +828,7 @@
   var grpListCollapsed = true;   // 侧栏「群组列表」整段是否收起
   var grpListDoneOpen = false;   // 里面「已完成群组 (N)」那一节是否展开（默认折叠）
   var grpOrder = [];             // 群名**第一次被填写的先后**（侧栏列表 & 导出都按它排）
+  var usedIds = {};              // 设备名 -> [已归档的数据ID]（见 LS_USED）—— 只用于导入去重
   // 群组视图那张表用哪个 key 记「已完成」折叠 / 表头全选 / 删除范围（见 cardPickable / del* 分支）
   var GRP_KEY = '__grp__';
   // 搜索【定位】用的查询词 —— 和上面的 searchQ（筛选）是**两回事**：
@@ -793,12 +881,32 @@
   }
 
   // ---------- 持久化 ----------
-  // 只写 UI 状态这一个键（体积小）—— 供输入框实时保存使用，避免为了记一个数字把几千条 rows 重新序列化
+  // ---------- 亮色 / 暗色主题（2026-10-15 新增）----------
+  //   两档（牛牛选的甲甲甲）：亮 / 暗，手动切，**默认亮色**。开关在侧栏标题右边（太阳 / 月亮）。
+  //   ⚠️ 标记打在 <html data-theme="dark"> 上，CSS 那边只覆盖变量（见 :root 下面的暗色块）。
+  //   ⚠️ 首屏不能闪白 —— <head> 里还有一段内联脚本**在渲染前**就先按 localStorage 打好标记，
+  //      这里的 applyTheme() 只负责"用户点切换时"的更新。
+  //   ⚠️ 状态存在现有 LS_UI（_ui_v2）里，**不新增键名**。
+  var THEME = 'light';
+  function isDark() { return THEME === 'dark'; }
+  function applyTheme() {
+    var root = document.documentElement;
+    if (THEME === 'dark') root.setAttribute('data-theme', 'dark');
+    else root.removeAttribute('data-theme');
+  }
+  function setTheme(t) {
+    THEME = (t === 'dark') ? 'dark' : 'light';
+    applyTheme(); saveUI(); render();
+    toast(THEME === 'dark' ? '已切到暗色模式' : '已切回亮色模式');
+  }
+  // 只把 UI 状态这一个键（体积小）—— 供输入框实时保存使用，避免为了记一个数字把几千条 rows 重新序列化
   function saveUI() {
-    try { localStorage.setItem(LS_UI, JSON.stringify({ doneCollapsed: doneCollapsed, devListCollapsed: devListCollapsed, sidebarPinned: sidebarPinned })); } catch (e) {}
+    try { localStorage.setItem(LS_UI, JSON.stringify({ doneCollapsed: doneCollapsed, devListCollapsed: devListCollapsed, sidebarPinned: sidebarPinned, theme: THEME })); } catch (e) {}
   }
   // 群组创建顺序单独存一个键 —— 它很小，且和 rows 的写入时机不完全一样（改群名并不改数据）
   function saveGrpOrder() { try { localStorage.setItem(LS_GRP, JSON.stringify(grpOrder)); } catch (e) {} }
+  // 归档 ID 名单单独存（同上：小，且写入时机和 rows 不同 —— 改群名并不改它）
+  function saveUsedIds() { try { localStorage.setItem(LS_USED, JSON.stringify(usedIds)); } catch (e) {} }
   function save() {
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(rows));
@@ -806,7 +914,40 @@
       localStorage.setItem(LS_MAN, JSON.stringify(devManual));
       saveUI();
       saveGrpOrder();
+      saveUsedIds();
     } catch (e) {}
+  }
+  // ⚠️ 2026-10-15 老数据批次回填（牛牛选的「甲」方案）。返回 true = 这次真的补了（调用方要 save 一次）。
+  //   更新前导入的数据没有 batch → 不补的话会被当成第 0 批、整坨按导入顺序沉在最下面。
+  //   这里用 `date`（导入日期）当**粗略批次**：
+  //     · 用**负数**：越新的日期越小（-1 最新、-2、-3…）→ 天然排在真批次（1、2、3…）**下面**
+  //     · 同一天内保持原 rows 顺序（显示用的是稳定排序）
+  //   ⚠️ 已知局限：同一天传的多份文档分不开（date 只精确到"天"）
+  function migrateOldBatch() {
+    var dates = [], any = false;
+    rows.forEach(function (r) {
+      if (r.batch !== undefined) return;
+      any = true;
+      var d = r.date || '';                              // 没日期的当最老（空串排最前）
+      if (dates.indexOf(d) === -1) dates.push(d);
+    });
+    if (!any) return false;
+    dates.sort();                                        // 日期升序（ISO 格式字典序 = 时间序）：最老的在前
+    var map = {};
+    dates.forEach(function (d, i) { map[d] = i - dates.length; });   // 最老 = -N … 最新 = -1
+    rows.forEach(function (r) { if (r.batch === undefined) r.batch = map[r.date || '']; });
+    return true;
+  }
+  // 归档去重名单的清洗（load / 恢复备份 / 撤销 三处共用）：只接受 { 设备名: [字符串ID] } 这种形状
+  function normalizeUsedIds(v) {
+    var out = {};
+    if (!v || typeof v !== 'object' || Object.prototype.toString.call(v) === '[object Array]') return out;
+    for (var k in v) {
+      if (Object.prototype.toString.call(v[k]) === '[object Array]') {
+        out[k] = v[k].filter(function (x) { return typeof x === 'string'; });
+      }
+    }
+    return out;
   }
   function load() {
     try {
@@ -817,12 +958,16 @@
       var dm = localStorage.getItem(LS_MAN);
       if (dm) devManual = JSON.parse(dm) || {};
       var ui = localStorage.getItem(LS_UI);
-      if (ui) { var u = JSON.parse(ui) || {}; doneCollapsed = u.doneCollapsed || {}; devListCollapsed = !!u.devListCollapsed; sidebarPinned = !!u.sidebarPinned; }
+      if (ui) { var u = JSON.parse(ui) || {}; doneCollapsed = u.doneCollapsed || {}; devListCollapsed = !!u.devListCollapsed; sidebarPinned = !!u.sidebarPinned; THEME = (u.theme === 'dark') ? 'dark' : 'light'; }
       var go = localStorage.getItem(LS_GRP);
       if (go) { var gg = JSON.parse(go); if (Object.prototype.toString.call(gg) === '[object Array]') grpOrder = gg.filter(function (x) { return typeof x === 'string'; }); }
+      var us = localStorage.getItem(LS_USED);
+      if (us) usedIds = normalizeUsedIds(JSON.parse(us));
     } catch (e) { rows = []; deviceOrder = []; devManual = {}; }
     // 补历史数据缺失的 k
     rows.forEach(function (r) { if (!r.k) r.k = 'r' + (++uid); else { var n = parseInt(String(r.k).slice(1), 10); if (n > uid) uid = n; } });
+    // ⚠️ 见 migrateOldBatch()：老数据按导入日期回填一次 batch（负数）。补了就立刻存一次。
+    if (migrateOldBatch()) save();
   }
 
   // ---------- 群组创建顺序（2026-10-13 新增）----------
@@ -1423,6 +1568,13 @@
     var existIds = {};
     var touched = {};                  // 本次新增的数据落在哪些设备上（用来决定导入后跳到哪）
     rows.forEach(function (r) { existIds[r.id] = true; });
+    // ⚠️ 2026-10-15：**已归档**的数据ID 也要参与去重（**按设备**查）——
+    //    否则导出时归档掉的数据，下次导入又会被当成新数据加回来。
+    var usedSet = {};
+    for (var udk in usedIds) {
+      usedSet[udk] = {};
+      usedIds[udk].forEach(function (x) { usedSet[udk][x] = true; });
+    }
     var today = todayStr();
     // ⚠️ 2026-10-14 新增：**上传批次号**（一份文档 = 一个批次）。
     //    未完成区按它**倒序**显示（最新上传的那份在最上），同一批次内部保持原顺序。
@@ -1438,6 +1590,8 @@
         else parsed = parseHtmlTable(text);
         parsed.forEach(function (p) {
           if (existIds[p.id]) { dup++; return; }
+          // 该设备**归档过**的 ID 同样跳过（口径和上面的 existIds 一致：精确匹配）
+          if (usedSet[p.device] && usedSet[p.device][p.id]) { dup++; return; }
           existIds[p.id] = true;
           touched[p.device] = true;
           rows.push({ k: 'r' + (++uid), id: p.id, nick: p.nick, device: p.device, dtype: p.dtype, date: today, group: '', status: 'none', batch: myBatch });
@@ -1457,7 +1611,6 @@
             selDevice = ''; selTag = ''; searchQ = '';
           }
           mainView = 'data';       // 导入完成，主区从导入页切回数据表
-          suppressAutoSel = true;  // ⚠️ 刚导入完**不自动全选**（否则会把这台设备更早的旧数据一起勾上）
           save(); render();
           toast('导入完成：新增 ' + added + ' 条' + (dup ? '，按数据ID去重跳过 ' + dup + ' 条' : '') +
             (devs.length ? '（已切到 ' + devs[0] + (devs.length > 1 ? ' 等 ' + devs.length + ' 个设备' : '') + '）' : ''));
@@ -1512,6 +1665,50 @@
     var d = new Date();
     return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '_' + pad(d.getHours()) + pad(d.getMinutes());
   }
+  // ⚠️ 2026-10-15 牛牛要求：**导出后自动归档**（只保留最近 2 个「已完成」群组）——
+  //   把「已完成」按**群组**分组 → 按每组**最晚的完成时间**倒序 → 只留前 2 个群组，
+  //   其余的**从 rows 里移走**；移走前把它们的**数据ID**记进该设备的归档名单（LS_USED），
+  //   于是同样的数据下次再导入**不会被加回来**（去重）。
+  //   ⚠️ 只在「已完成群组数 > 2」时才动；没有 doneAt 的群按 0 算（= 最早）。
+  //   ⚠️ 移走 = **真的没了**（牛牛："删掉的不要能查"）—— 除了备份没有别的退路，改这里要极其小心。
+  //   ⚠️ 与「手动删除已完成」的区别：手动删**不留 ID**（下次还能导进来，牛牛明确要这样）。
+  var KEEP_DONE_GROUPS = 2;
+  function archiveDone() {
+    var byG = {}, order = [];
+    rows.forEach(function (r) {
+      if (r.status !== 'done') return;
+      var g = r.group || '';
+      if (!(g in byG)) { byG[g] = { g: g, last: 0, rows: [] }; order.push(g); }
+      byG[g].rows.push(r);
+      if ((r.doneAt || 0) > byG[g].last) byG[g].last = r.doneAt || 0;
+    });
+    if (order.length <= KEEP_DONE_GROUPS) return { n: 0, groups: [] };
+    // 按「最晚完成时间」倒序 —— sort 稳定，时间相同就保持群组首次出现的先后
+    var list = order.map(function (g) { return byG[g]; });
+    list.sort(function (a, b) { return b.last - a.last; });
+    var kill = list.slice(KEEP_DONE_GROUPS);
+    var killKeys = {}, killGroups = [];
+    kill.forEach(function (c) {
+      killGroups.push(c.g);
+      c.rows.forEach(function (r) {
+        killKeys[r.k] = true;
+        if (r.id) {
+          if (!usedIds[r.device]) usedIds[r.device] = [];
+          if (usedIds[r.device].indexOf(r.id) === -1) usedIds[r.device].push(r.id);
+        }
+      });
+    });
+    var before = rows.length;
+    rows = rows.filter(function (r) { return !killKeys[r.k]; });
+    for (var kk in killKeys) delete selected[kk];
+    save();
+    return { n: before - rows.length, groups: killGroups };
+  }
+  // 归档结果 → 提示条后缀（没归档就返回空串）
+  function arcNote(arc) {
+    if (!arc || !arc.n) return '';
+    return '；已归档 ' + arc.n + ' 条更早的已完成数据（只留最近 ' + KEEP_DONE_GROUPS + ' 个群组）';
+  }
   function doExport(targets) {
     var blob = zipStore(buildXlsxParts(targets, { kind: 'launched' }));      // 真 .xlsx（OOXML）
     downloadBlob(blob, '已拉群_' + stamp() + '.xlsx');
@@ -1520,8 +1717,9 @@
     var t = Date.now();
     targets.forEach(function (r) { r.status = 'done'; r.doneAt = t; });
     selected = {};
-    save(); render();
-    toast('已导出 ' + targets.length + ' 条「已拉群」数据，并全部标记为「已完成」');
+    var arc = archiveDone();          // ⚠️ 内部会 save()；归档后 rows 变了，下面统一 render
+    render();
+    toast('已导出 ' + targets.length + ' 条「已拉群」数据，并全部标记为「已完成」' + arcNote(arc));
   }
   // 导出「未分配」：**默认不动数据**；只有勾了弹窗里的「标记已完成」才改状态。
   // 标记时是 未分配 → 已完成（跳过「已分配」，群名保持空）——
@@ -1529,13 +1727,16 @@
   function doExportNone(targets, markDone) {
     var blob = zipStore(buildXlsxParts(targets, { kind: 'unassigned' }));
     downloadBlob(blob, '未分配数据_' + stamp() + '.xlsx');
+    var arc = { n: 0, groups: [] };
     if (markDone) {
       var t = Date.now();            // 同批次同一个「完成时间」戳（与 doExport 一致）
       targets.forEach(function (r) { r.status = 'done'; r.doneAt = t; });
       selected = {};
-      save(); render();
+      save();
     }
-    toast('已导出 ' + targets.length + ' 条未分配数据' + (markDone ? '，并标记为「已完成」' : ''));
+    arc = archiveDone();             // 两个导出都触发归档；内部会 save()
+    render();
+    toast('已导出 ' + targets.length + ' 条未分配数据' + (markDone ? '，并标记为「已完成」' : '') + arcNote(arc));
   }
   // 导出未分配前的确认弹窗：问「要不要顺手把这些未分配标成已完成」
   function askExportNone() {
@@ -1661,16 +1862,21 @@
     }
     // ⚠️ 行号要**单独数**（不再等于数据序号）—— 四列那份会在「不同群名之间」插空行（见下）。
     var body = '', rowNo = 0, prevGroup = null;
+    // 已拉群那份：记下每个群组的 [起始行, 结束行]（**不含**组间空行）—— 用来把 E:I 合并成一块空白区
+    var grpSpans = [];
     targets.forEach(function (r) {
       // ⚠️ 2026-10-14 牛牛要求：**不同群名之间空一行**（只加「导出表格」= 四列那份）。
       //    导出的排序本来就是「同群连续优先」，所以"群名一变"就是组边界。
       //    · 第一组前面**不加**（prevGroup === null 时跳过）；最后一组后面也不加（循环里没机会加）
       //    · 空行**不写任何单元格** → 不占设备色、不占群名底色（牛牛："空白行完全不填色"）
-      if (isAssigned && prevGroup !== null && r.group !== prevGroup) {
+      var isNewGrp = isAssigned && r.group !== prevGroup;
+      if (isAssigned && prevGroup !== null && isNewGrp) {
         body += '<row r="' + (++rowNo) + '" spans="1:4"/>';
       }
+      if (isNewGrp) grpSpans.push([rowNo + 1, rowNo + 1]);
       prevGroup = r.group;
       var n = ++rowNo;
+      if (isAssigned && grpSpans.length) grpSpans[grpSpans.length - 1][1] = n;   // 更新本组结束行
       var dv = '<c r="' + lastCol + n + '" s="' + devXfId[r.device] + '" t="s"><v>' + sid(r.device) + '</v></c>';
       if (isAssigned) {
         // s=1 是 A 列（群名称）专用样式，见 styles.xml：带一个底色，和 1096.xlsx 里那一格完全相同
@@ -1689,7 +1895,17 @@
       }
     });
     // 真实数据范围（**含插进去的空行**）—— 全表只用这一个；写小了 Excel 打开时表格范围会短一截
-    var DIM = 'A1:' + lastCol + Math.max(1, rowNo);
+    // ⚠️ 已拉群那份右边还有 E:I 的合并空白区 → 范围必须扩到 I 列，否则打开时右边那块会被截掉
+    var DIM = 'A1:' + (isAssigned ? 'I' : lastCol) + Math.max(1, rowNo);
+    // ⚠️ 2026-10-15 牛牛要求（交单表格优化）：**已拉群那份，每个群组把 E:I 合并成一块空白区**
+    //    （对齐他手工做的 E1:I32 / E34:I64 / E66:I96 —— 高度 = 该群组行数、**不含**组间空行），
+    //    留给他贴群截图/备注用。空白区不写任何单元格 → 不带色、不带边框。
+    //    ⚠️ mergeCells 在 CT_Worksheet 的 schema 里必须排在 sheetData **之后**、ignoredErrors **之前**。
+    var MERGE_XML = grpSpans.length
+      ? '<mergeCells count="' + grpSpans.length + '">' +
+        grpSpans.map(function (s) { return '<mergeCell ref="E' + s[0] + ':I' + s[1] + '"/>'; }).join('') +
+        '</mergeCells>'
+      : '';
     var NOW = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
     var list = [
       ['[Content_Types].xml',
@@ -1788,6 +2004,7 @@
           ? '<cols><col min="1" max="1" width="30.625" customWidth="1"/><col min="2" max="3" width="25.625" customWidth="1"/><col min="4" max="4" width="9" customWidth="1"/></cols>'
           : '<cols><col min="1" max="2" width="25.625" customWidth="1"/><col min="3" max="3" width="9" customWidth="1"/></cols>') +
         '<sheetData>' + body + '</sheetData>' +
+        MERGE_XML +
         // 数据ID 按文本存，用 ignoredErrors 声明「数字以文本存储」不算错，绿三角不出现。
         // sqref 必须收在真实数据范围内：早先写成 A1:D1048576 会把整张表的「已使用区域」
         // 撑到最后一行（实测真实表格引擎读出来的 used_range 直接变成满表 200 行），
@@ -1856,10 +2073,12 @@
   // 「数据类型」下拉的五个候选（数组顺序 = 下拉里的顺序）
   // ⚠️ 2026-10-13 牛牛要求：第一项由「全选」**改名「默认」**（它本来就是默认选中的那一项）
   // ⚠️ 2026-10-14 牛牛要求：**按当前作用域动态显示** —— 当前这台设备 / 这个群里没有的那一类，
-  //    就不再出现在下拉里（更清爽）。「默认」永远在（它是基础档）。
+  //    就不再出现在下拉里（更清爽）。「全选」永远在（它是基础档）。
   //    判定口径和 typePool() 完全一致（都在当前作用域里算），所以"下拉里有的，点进去一定有"。
+  // ⚠️ 2026-10-15 牛牛改口：第一项由「默认」**又改回「全选」**（2026-10-13 曾由「全选」改成「默认」）。
+  //    因为"还没选过"这层意思现在由**按钮上的占位「选择类型」**承担了，所以列表里可以叫它本来的名字。
   var PICK_TYPES = [
-    { v: 'all', label: '默认' },
+    { v: 'all', label: '全选' },
     { v: 'none', label: '未分配' },
     { v: 'pending', label: '已分配' },
     { v: 'launched', label: '已拉群' },
@@ -1867,7 +2086,7 @@
   ];
   function typeLabel(v) {
     for (var i = 0; i < PICK_TYPES.length; i++) if (PICK_TYPES[i].v === v) return PICK_TYPES[i].label;
-    return '默认';
+    return '全选';
   }
   // 当前实际可用的下拉项：「默认」常驻，其余四类"有数据才出现"。
   function pickTypes() {
@@ -1916,27 +2135,20 @@
     var list = typePoolInDisplayOrder(pickType);
     return list.slice(Math.max(0, list.length - n));
   }
-  // ---------- 「选中 N」默认 = 全选（2026-10-13 牛牛要求：「打开就自动全勾上」）----------
-  // 进数据页 / 换设备 / 换群组时，**自动把当前「数据类型」那一类整类勾上**，不用先手点。
-  // ⚠️ 用「作用域键」当闸门：只有作用域**变了**才自动勾一次。同一作用域内的重绘
-  //    （改群名 / 删除 / 标记已拉 / 恢复 / 撤销…）绝不会再自动勾回来 ——
-  //    否则刚批量删完又立刻被勾上，越用越乱、还会误操作。
-  // ⚠️「导入完成」和「恢复备份」这两条路**明确不自动勾**：那两种场景下用户要处理的是
-  //    "刚进来的那批"，把整台设备（含更早的旧数据）全勾上，会有把旧数据一起塞进新群名的风险。
-  var autoSelScope = null;        // 上次自动全选时的作用域键（设备名 / GRP_KEY）；null = 还没进过数据页
-  var suppressAutoSel = false;    // 置 true → 下一次进数据页**跳过**自动全选（只吃一次就复位）
+  // ---------- 勾选从**空**开始，要选就自己点（2026-10-15 牛牛改口）----------
+  // ⚠️ 2026-10-13 曾经是「进数据页就自动全勾上」，2026-10-15 **取消**了：
+  //    「数据类型」按钮现在恒显示占位「选择类型」（= 看着像"还没选"），却把整区都勾上 → 自相矛盾。
+  //    现在的规则（统一一条）：**进设备 / 点群名进群视图 / 导入完成 / 恢复备份 —— 一律不自动勾**。
+  //    · 要全选   → **主动在下拉里点一下「全选」**（onPickType 里会整类全勾，
+  //                 且它**没有**"同值就不再触发"的拦截 —— 所以已经是全选时再点一下照样重新全勾）
+  //    · 要某几类 → 点那一类（点中即整类全勾）
+  //    · 要 N 条   → 「选中 N」填数字点 ✓
+  // ⚠️ 于是原来的 autoSelScope / suppressAutoSel / syncAutoSelect 全部作废，已删干净。
   function autoSelectAll() {
     var list = typePool(pickType);
     selected = {};
     list.forEach(function (r) { selected[r.k] = true; });
     return list.length;
-  }
-  // 在 render() 里、**拼 HTML 之前**调用（勾选状态本身要参与渲染）
-  function syncAutoSelect() {
-    if (mainView !== 'data') { autoSelScope = null; return; }   // 离开数据页 → 下次进来重新自动勾
-    var sk = groupScope ? GRP_KEY : filterDevice;
-    if (suppressAutoSel) { suppressAutoSel = false; autoSelScope = sk; return; }
-    if (sk && sk !== autoSelScope) { autoSelScope = sk; autoSelectAll(); }
   }
 
   function selCount() { var n = 0; for (var k in selected) if (selected[k]) n++; return n; }
@@ -2057,12 +2269,10 @@
       if (!gAlive) groupScope = '';
     }
 
-    // ⚠️ 「选中 N」默认全选：必须在**拼 HTML 之前**跑 —— 勾选状态要参与渲染（行勾选框 + 表头全选框 + 选中数）。
-    //    放在这里是因为 filterDevice / groupScope 都已经在这一步之前定稿了。
-    // ⚠️ 「数据类型」下拉是动态的（没数据的类别不出现）→ 先确认当前选中项还活着，没了就退回「默认」。
-    //    必须排在 syncAutoSelect() 前面 —— 它内部按 pickType 取候选池。
+    // ⚠️ 「数据类型」下拉是动态的（没数据的类别不出现）→ 先确认当前选中项还活着，没了就退回「全选」。
+    //    必须在拼 HTML 之前跑（下拉要按定稿后的 pickType 渲染）。
     normalizePickType();
-    syncAutoSelect();
+    // ⚠️ 2026-10-15 起这里**不再自动全选**（syncAutoSelect 已删）—— 勾选从空开始，详见上面那段说明。
 
     // 侧栏三段式：标题 / 设备列表（撑满、自己滚）/ 底部全局操作
     var counts = {};
@@ -2075,7 +2285,10 @@
       counts[r.device] = (counts[r.device] || 0) + 1;
       if (r.status === 'pending' || r.status === 'launched' || outOfLib(r)) devAlert[r.device] = true;
     });
-    var sb = '<div class="side-head"><h1>拉群小助手</h1></div>';
+    // 标题右边一个亮/暗切换小图标（2026-10-15）。图标跟着当前主题走：亮色时显示月亮（点了变暗）、暗色时显示太阳。
+    var sb = '<div class="side-head"><h1>拉群小助手</h1>' +
+      '<button class="theme-tg" data-act="toggleTheme" title="' + (isDark() ? '切到亮色模式' : '切到暗色模式') + '">' +
+      (isDark() ? ICON.sun : ICON.moon) + '</button></div>';
     sb += '<div class="side-list">';
     // ① 仪表盘（放在设备列表**上面**，单独一项）
     //   ⚠️ 图标平时灰、**激活时才上该项目的色**（--ac）—— 全侧栏统一这套规则
@@ -2177,6 +2390,9 @@
   // 用 SVG 而不是 emoji：emoji 是彩色位图，没法跟着 CSS 变色；
   // SVG 用 stroke="currentColor"，所以「激活时变蓝」才做得到。
   var ICON = {
+    // 亮色/暗色切换（2026-10-15）：月亮 = 当前亮色、点了变暗；太阳 = 当前暗色、点了变亮
+    moon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
+    sun: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
     grid: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></svg>',
     // 「单设备」条目图标：**14px**（2026-10-13 牛牛："条目左边的图标调到比标题图标小一档"）。
     //   ⚠️ 侧栏的层级靠三件事一起表达：分组头 14px 字号 + 16px 图标；条目 13px 字号 + 14px 图标 + 左缩进 12px。
@@ -2318,14 +2534,17 @@
       '<span>' + label + '</span>' + ICON.caret + '</button>' +
       '<div class="vb-dd-list" id="' + id + '" hidden>' + opts + '</div></span>';
   }
-  // 「数据类型」下拉：从哪一类里自下而上挑人。选项顺序见 PICK_TYPES，默认「默认」。
+  // 「数据类型」下拉：从哪一类里自下而上挑人。选项顺序见 PICK_TYPES，第一项是「全选」。
   // ⚠️ 选项是**动态**的（见 pickTypes()）：当前作用域里没数据的类别不出现。
+  // ⚠️ 2026-10-15 牛牛要求（甲A）：按钮**恒定显示占位「选择类型」**，完全照抄右边「修改类型」的「选择操作」——
+  //    两边长得对称。当前选中的是哪一档，靠**列表里那一项的高亮（.on）**表示，不再写到按钮上。
+  //    ⚠️ 所以任何地方都不要再拿按钮文字当"当前类型"用（测试也改成读 .vb-dd-opt.on）。
   function typeSelectHtml() {
-    return ddHtml('vbType', typeLabel(pickType), pickType,
+    return ddHtml('vbType', '选择类型', pickType,
       pickTypes().map(function (t) { return [t.v, t.label]; }), 'pickType');
   }
   // 「修改类型」下拉（2026-10-13 第二轮改版）：选项**跟着「数据类型」变**（牛牛给的对照表）——
-  //   数据类型 = 默认   → 4 项全出现（设置群名称 / 设为未分配 / 设为已拉群 / 设为已分配）
+  //   数据类型 = 全选   → 4 项全出现（设置群名称 / 设为未分配 / 设为已拉群 / 设为已分配）
   //             未分配 → 只有「设置群名称」
   //             已分配 → 退回未分配 / 设为已拉群
   //             已拉群 → 只有「退回已分配」
@@ -2350,7 +2569,8 @@
     return ddHtml('vbBatch', '选择操作', '', items, 'batchPick');
   }
   // 操作栏（数据页，2026-10-13 按牛牛要求**清空重做**，第二轮再微调）：一行 = 三件套 + 右侧统计 ——
-  //   ① 数据类型：从哪一类里挑（默认 / 未分配 / 已分配 / 已拉群 / 已完成）——**选中即整类全勾**
+  //   ① 数据类型：从哪一类里挑（全选 / 未分配 / 已分配 / 已拉群 / 已完成）——**选中即整类全勾**
+  //      ⚠️ 按钮上恒显示占位「选择类型」，当前档靠列表里的高亮表示（见 typeSelectHtml）
   //   ② 选中 N：填个数字 → ✓（回车同）= 自下而上选中 N 个；✗ = 取消（清空所有勾选）
   //   ③ 修改类型：下拉，**选项跟着「数据类型」变**（见 BATCH_MENU）；选一项就执行 / 弹小窗
   // 位置在卡片下方，并且**吸在窗口底部**：main.is-data + .vb-spacer 一起把"没数据"的情况也顶到底部。
@@ -2427,10 +2647,10 @@
   // （原操作栏的「群组」上拉面板 —— grpPanelInner / grpBarHtml / renderGrpPanel —— 已按牛牛要求**整块删除**：
   //   群组现在在侧栏「群组列表」里，不再占操作栏，也就不需要那块面板和它的局部重绘逻辑了。）
   // 选中一个群（'' = 退出群视图，回到按设备看）
-  // 2026-10-13 三改定稿：点群名 = 跳过去看（跨设备合成一张表）+ **进页面时自动全选整群**
-  //   （自动全选由 render() 里的 syncAutoSelect() 统一负责，闸门 = 作用域键）；
-  //   再点**同一个群** → 直接 return，什么都不变（勾选也不会被清）。
-  //   · 勾选口径和「点设备」完全一致：切作用域就**清空勾选**，随后自动全选会按当前「数据类型」重新勾上
+  // 2026-10-13 三改定稿：点群名 = 跳过去看（跨设备合成一张表）。
+  // ⚠️ 2026-10-15 起**不再自动全选整群**（牛牛：按钮是占位「选择类型」却把整群勾上，自相矛盾）——
+  //   要全选就在下拉里点「全选」。再点**同一个群** → 直接 return，什么都不变。
+  //   · 勾选口径和「点设备」完全一致：**切作用域就清空勾选**，之后从空开始
   //   · 点到的群如果整个都已经完成 → 顺手把群视图那张表的「已完成」折叠区展开，
   //     否则跳过去看到的是一屏空白（看不到人就没法恢复 / 删除）。这条**保留**。
   function setGroupScope(g) {
@@ -2809,10 +3029,14 @@
     var snap = [];
     rows.forEach(function (r, i) { if (inKeys[r.k]) snap.push({ i: i, r: r }); });
     if (!snap.length) { toast('没有可删除的数据'); return; }
+    // ⚠️ 2026-10-15 牛牛定调：**手动删除不留数据ID**（只有"导出后自动归档"才留）→
+    //    同样的数据下次导入还会被当成新数据加进来。只在删到「已完成」时提一句，免得删未分配也啰嗦。
+    var doneN = snap.filter(function (s) { return s.r.status === 'done'; }).length;
     rows = rows.filter(function (r) { return !inKeys[r.k]; });
     selected = {};
     save(); render();
-    toast('已删除 ' + snap.length + ' 条数据', function () {
+    toast('已删除 ' + snap.length + ' 条数据' +
+      (doneN ? '。⚠️ 这些数据ID没留存，下次再导入还会进来' : ''), function () {
       snap.slice().sort(function (a, b) { return a.i - b.i; }).forEach(function (s) { rows.splice(s.i, 0, s.r); });
       save(); render(); toast('已撤销删除');
     });
@@ -3042,6 +3266,8 @@
     if (act === 'togglePin') { sidebarPinned = !sidebarPinned; saveUI(); syncSidebar(); render(); return; }
     // ---- 侧栏底部的三个全局操作：改为主区整页视图（不再弹窗）----
     if (act === 'openImport') { pendingFiles = []; mainView = 'import'; render(); return; }
+    // 侧栏标题右边的亮/暗切换（2026-10-15）
+    if (act === 'toggleTheme') { setTheme(isDark() ? 'light' : 'dark'); return; }
     // ---- 导入页：移除单个文件 / 取消全部 / 确定导入 ----
     if (act === 'impRemove') { pendingFiles.splice(+t.getAttribute('data-i'), 1); render(); return; }
     if (act === 'impClear') { pendingFiles = []; render(); toast('已清空待导入列表'); return; }
@@ -3089,17 +3315,32 @@
       return;
     }
     if (act === 'delDev') {
-      // 删除设备 = 连同其下数据一起永久删除（按用户要求不提供撤销、不弹提示条）
+      // 删除设备 = 连同其下数据 **+ 该设备的「已归档去重名单」** 一起永久删除。
+      // ⚠️ 2026-10-15 起加了确认弹窗：以前是"点了就删、不弹提示条"，现在会**顺手清掉去重名单**
+      //    （这是必须的 —— 否则他想重做这台设备时，重新导入会一条都进不来），
+      //    既然多删了一样东西，至少得让他知道。
       var dd = t.getAttribute('data-dev');
-      var goneKeys = {};
-      rows.forEach(function (r) { if (r.device === dd) goneKeys[r.k] = true; });
-      rows = rows.filter(function (r) { return r.device !== dd; });
-      for (var gk in goneKeys) delete selected[gk];
-      deviceOrder = deviceOrder.filter(function (x) { return x !== dd; });
-      delete devManual[dd];
-      delete doneCollapsed[dd];
-      if (filterDevice === dd) filterDevice = deviceOrder[0] || '';   // 删掉的正是当前设备 → 退回第一个
-      save(); render();
+      openModal({
+        title: '删除设备',
+        bodyHtml: '<div class="muted">将永久删除设备「<b>' + esc(dd) + '</b>」及其下 <b class="n">' +
+          rows.filter(function (r) { return r.device === dd; }).length + '</b> 条数据，以及该设备的<b>去重记录</b>。</div>' +
+          '<p class="muted" style="margin-top:10px">⚠️ 不能撤销。删除后这台设备的采集文件可以重新导入（不会被去重挡住）。</p>',
+        okText: '确定删除',
+        okRed: true,
+        onOk: function () {
+          var goneKeys = {};
+          rows.forEach(function (r) { if (r.device === dd) goneKeys[r.k] = true; });
+          rows = rows.filter(function (r) { return r.device !== dd; });
+          for (var gk in goneKeys) delete selected[gk];
+          deviceOrder = deviceOrder.filter(function (x) { return x !== dd; });
+          delete devManual[dd];
+          delete doneCollapsed[dd];
+          delete usedIds[dd];                       // ⚠️ 连带清掉该设备的归档去重名单
+          if (filterDevice === dd) filterDevice = deviceOrder[0] || '';   // 删掉的正是当前设备 → 退回第一个
+          save(); render();
+          toast('已删除设备「' + dd + '」及其去重记录');
+        }
+      });
       return;
     }
     // ---- 库管理整页 ----
@@ -3139,16 +3380,19 @@
     }
     // 「已完成群组 (N)」：侧栏里的一个小折叠节，翻标志位即可（手动展开 / 收起）
     else if (act === 'toggleGrpDoneList') { grpListDoneOpen = !grpListDoneOpen; render(); }
-    // 点群名 = 跳到这个群看（进页面时会自动全选整群，见 setGroupScope / syncAutoSelect）
+    // 点群名 = 跳到这个群看（2026-10-15 起**不再自动全选整群**，见 setGroupScope）
     else if (act === 'pickGrp') { setGroupScope(t.getAttribute('data-g') || ''); }
     else if (act === 'restoreDone') { restoreDone(); }
     else if (act === 'locateGo') { locateGo(t.getAttribute('data-k')); }
     else if (act === 'delRow') {
-      // 单条删除：静默、不可撤销（按用户要求不弹任何提示）
+      // 单条删除：静默、不可撤销（按用户要求不弹提示）。
+      // ⚠️ 2026-10-15：只有删到「已完成」时才提一句 —— 那条数据的 ID 没留存，下次再导入还会进来。
       var rk = t.getAttribute('data-k');
+      var wasDone = rows.some(function (r) { return r.k === rk && r.status === 'done'; });
       rows = rows.filter(function (r) { return r.k !== rk; });
       delete selected[rk];
       save(); render();
+      if (wasDone) toast('已删除。⚠️ 这条已完成数据的ID没留存，下次再导入还会进来');
     }
     else if (act === 'delSel') {
       // 表头垃圾桶 = **删除选中**（牛牛 2026-10-13 改）：
@@ -3176,7 +3420,8 @@
       openModal({
         title: '删除全部已完成',
         bodyHtml: '将删除本组 <b class="n">' + dn + '</b> 条已完成数据，确定继续吗？' +
-          '<div class="muted" style="margin-top:8px">删掉就找不回来了（确定之后还有 6 秒可以撤销）。</div>',
+          '<div class="muted" style="margin-top:8px">删掉就找不回来了（确定之后还有 6 秒可以撤销）。' +
+          '<br>⚠️ 这些数据的<b>数据ID不会留存</b> —— 下次再导入还会被当成新数据加进来。</div>',
         okText: '全部删除', okRed: true,
         // ⚠️ 2026-10-14 牛牛要求：撤销只保留「删除」类 → 这个入口**补上撤销**。
         //    直接复用 deleteRowsByKeys —— 它已经带「按原位置插回 + 6 秒撤销」，不用再写一遍。
@@ -3718,6 +3963,9 @@
         devManual: devManual,
         ui: { doneCollapsed: doneCollapsed, devListCollapsed: devListCollapsed },
         grpOrder: grpOrder,                       // 群组创建顺序（侧栏列表 & 导出都按它排）
+        // ⚠️ 2026-10-15：**归档去重名单也要跟着备份走** —— 否则恢复备份后名单空了，
+        //    那些已归档的数据下次导入又会被当成新数据加进来。老备份没有这个字段 → 当空对象。
+        usedIds: usedIds,
         rosterMode: ROSTER_MODE
       }
     };
@@ -3783,6 +4031,8 @@
     // 群组创建顺序：老备份里没有这个字段 → 空数组（grpOrderList() 会按"首条数据位置"兜底补齐）
     grpOrder = (Object.prototype.toString.call(d.grpOrder) === '[object Array]')
       ? d.grpOrder.filter(function (x) { return typeof x === 'string'; }) : [];
+    // ⚠️ 归档去重名单（2026-10-15 新增）：老备份没这个字段 → 当空（那些 ID 会重新被导入，可接受）
+    usedIds = normalizeUsedIds(d.usedIds);
     selected = {}; newDevVal = ''; pendingFiles = [];
     // 补/校正行内键 k，并把 uid 抬到最大，避免之后新增的行撞号
     rows.forEach(function (r) {
@@ -3792,7 +4042,6 @@
     });
     filterDevice = deviceOrder[0] || '';
     mainView = 'data';
-    suppressAutoSel = true;   // ⚠️ 刚恢复完一批数据**不自动全选**（同上：避免把整台设备一起勾上误操作）
     save();
     if (d.rosterMode && ROSTER_MODES.indexOf(d.rosterMode) !== -1) {
       try { setRosterMode(d.rosterMode); } catch (e) {}
@@ -3805,6 +4054,7 @@
       devListCollapsed = !!(b.ui || {}).devListCollapsed;
       if (!devListCollapsed) grpListCollapsed = true;   // 侧栏互斥不变量：设备列表展开 → 群组列表收起
       grpOrder = (Object.prototype.toString.call(b.grpOrder) === '[object Array]') ? b.grpOrder : [];
+      usedIds = normalizeUsedIds(b.usedIds);     // ⚠️ 归档去重名单也要一起退回
       selected = {}; filterDevice = deviceOrder[0] || '';
       save(); render(); toast('已撤销恢复');
     });
@@ -3845,6 +4095,8 @@
     this.value = '';
   });
   load();
+  applyTheme();               // ⚠️ 按 load() 读出来的 THEME 同步一次 <html data-theme>
+                              //    （首屏那段内联脚本已经打过了，这里是"两边对齐"的保险）
   render();
   initSidebarRail();          // 侧栏 rail：悬停 / 键盘聚焦自动展开（2026-10-13 第三轮）
   // 名单库：先读本机缓存立刻可用（断网也行），云端再在后台比对版本号
