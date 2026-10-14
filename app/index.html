@@ -1411,7 +1411,13 @@
     var touched = {};                  // 本次新增的数据落在哪些设备上（用来决定导入后跳到哪）
     rows.forEach(function (r) { existIds[r.id] = true; });
     var today = todayStr();
+    // ⚠️ 2026-10-14 新增：**上传批次号**（一份文档 = 一个批次）。
+    //    未完成区按它**倒序**显示（最新上传的那份在最上），同一批次内部保持原顺序。
+    //    起始号 = 现有数据里最大的批次号 —— 老数据没有 batch 字段（当 0），**不用新增存储键**。
+    var maxBatch = 0;
+    rows.forEach(function (r) { if ((r.batch || 0) > maxBatch) maxBatch = r.batch || 0; });
     Array.prototype.forEach.call(files, function (f) {
+      var myBatch = ++maxBatch;        // 每个文件一个号，按用户勾选的先后（同步遍历，顺序可靠）
       var reader = new FileReader();
       reader.onload = function () {
         var text = decodeBuffer(reader.result);
@@ -1423,7 +1429,7 @@
           if (existIds[p.id]) { dup++; return; }
           existIds[p.id] = true;
           touched[p.device] = true;
-          rows.push({ k: 'r' + (++uid), id: p.id, nick: p.nick, device: p.device, dtype: p.dtype, date: today, group: '', status: 'none' });
+          rows.push({ k: 'r' + (++uid), id: p.id, nick: p.nick, device: p.device, dtype: p.dtype, date: today, group: '', status: 'none', batch: myBatch });
           added++;
         });
         if (--pending === 0) {
@@ -1880,10 +1886,13 @@
     return base.filter(function (r) { return r.status === v; });
   }
   // 自下而上取最多 n 条（不足 n 则全取）。
-  // ⚠️ 是**从列表底部往上数** —— 列表底部 = 最近导入的数据。
+  // ⚠️ 2026-10-14 改口：**未完成区按"上传批次"倒序显示**（最新上传的在上、最旧的在下，见 tableCard），
+  //    所以「从列表底部往上数」= 从**最旧的**开始数 → 这里取**开头 n 条**（`slice(0, n)`）。
+  //    ⚠️ 改之前是取**末尾** n 条（= 最新导入的），**这个行为已经反过来了**：
+  //       现在按 ✓ 勾到的是最旧的那批，不是最新的那批。
   function typePick(n) {
     var list = typePool(pickType);
-    return list.slice(Math.max(0, list.length - n));
+    return list.slice(0, n);
   }
   // ---------- 「选中 N」默认 = 全选（2026-10-13 牛牛要求：「打开就自动全勾上」）----------
   // 进数据页 / 换设备 / 换群组时，**自动把当前「数据类型」那一类整类勾上**，不用先手点。
@@ -2465,7 +2474,8 @@
   //     ① 先按群名聚簇，簇内保持列表原始顺序（= 导入正序，跟未分配一样）
   //     ② 簇与簇之间按**簇内第一条在原始列表里的位次**排
   //   ⚠️ 不再按 doneAt（交单/完成时间）倒序 —— doneAt 字段还留着（撤销快照要用），只是不参与排序。
-  //   ⚠️ 未完成区**不排**，保持导入正序（rows.filter / sort(稳定) 天然保序）。
+  //   ⚠️ 未完成区**不按群名排**，只按 2026-10-14 新增的**上传批次倒序**（最新上传的在上、
+  //      同一批内部保持原顺序），见下方 tableCard()。已完成区**不走这套**，保持"原顺序为主"。
   function sortDoneRows(list) {
     var clusters = [], m = {};
     list.forEach(function (r, i) {
@@ -2485,7 +2495,14 @@
   function tableCard(scopeKey, vis) {
     var showCheck = true;                           // 有勾选列
     var isGrp = (scopeKey === GRP_KEY);
+    // ⚠️ 2026-10-14 牛牛要求：**未完成区按"上传批次"倒序** —— 最新上传的那份文档的数据在最上，
+    //    同一份文档（同一批次）内部**保持原顺序**（靠稳定排序保证）。
+    //    `rows` 本身仍是导入正序，这里只排**渲染用的副本**。
+    //    · 老数据没有 `batch` 字段 → 当作第 0 批 → 永远沉在最下面
+    //    · 「选中 N」= 从最旧的开始数（见 typePick），而最旧的正好在列表最下面 → 和"从下面数"一致
+    //    · 已完成区**不按批次排**（它有自己的定稿：原顺序为主 + 同群名聚在一起，见 sortDoneRows）
     var active = vis.filter(function (r) { return r.status !== 'done'; });
+    active.sort(function (a, b) { return (b.batch || 0) - (a.batch || 0); });
     var done = sortDoneRows(vis.filter(function (r) { return r.status === 'done'; }));
     var collapsed = doneCollapsed[scopeKey] !== false;
     // 表头「全选」复选框的候选行 —— ⚠️ 必须走 cardPickable(scopeKey)（当前作用域内的可操作行）：
