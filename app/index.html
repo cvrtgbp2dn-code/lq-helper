@@ -1405,6 +1405,19 @@
     return (chosen || utf8).replace(/\uFFFD/g, '');
   }
 
+  // 上传批次号的发号器（2026-10-14）：一份文档 = 一个批次号。
+  //   ⚠️ 必须是**模块级、只增不减**，不能每次导入都从 rows 现算：
+  //      两次导入若发生重叠（第一次还在读文件、用户又点了「确定导入」），
+  //      各自现算会拿到同一个号 → 两批被当成同一批显示（顺序就乱了）。
+  //   ⚠️ 同时要能"被抬上去"：恢复备份后 rows 里可能出现**比当前号更大**的 batch，
+  //      这时必须把号抬到那个最大值之上，否则新导入的批次号反而更小，会被排到备份数据**下面**。
+  var impBatchSeq = 0;
+  function nextImportBatch() {
+    var mx = 0;
+    rows.forEach(function (r) { if ((r.batch || 0) > mx) mx = r.batch || 0; });
+    if (mx > impBatchSeq) impBatchSeq = mx;
+    return ++impBatchSeq;
+  }
   function importFiles(files) {
     var pending = files.length, added = 0, dup = 0;
     var existIds = {};
@@ -1413,11 +1426,9 @@
     var today = todayStr();
     // ⚠️ 2026-10-14 新增：**上传批次号**（一份文档 = 一个批次）。
     //    未完成区按它**倒序**显示（最新上传的那份在最上），同一批次内部保持原顺序。
-    //    起始号 = 现有数据里最大的批次号 —— 老数据没有 batch 字段（当 0），**不用新增存储键**。
-    var maxBatch = 0;
-    rows.forEach(function (r) { if ((r.batch || 0) > maxBatch) maxBatch = r.batch || 0; });
+    //    老数据没有 batch 字段 → 当 0 → 永远沉在最下面；**不用新增存储键**。
     Array.prototype.forEach.call(files, function (f) {
-      var myBatch = ++maxBatch;        // 每个文件一个号，按用户勾选的先后（同步遍历，顺序可靠）
+      var myBatch = nextImportBatch();   // 每个文件一个号，按用户勾选的先后（同步遍历，顺序可靠）
       var reader = new FileReader();
       reader.onload = function () {
         var text = decodeBuffer(reader.result);
@@ -1885,14 +1896,25 @@
     if (v === 'all') return base;
     return base.filter(function (r) { return r.status === v; });
   }
+  // 「按上传批次倒序」= **未完成区的显示顺序**（稳定排序 ⇒ 同批次内部保持原顺序）。
+  //   ⚠️⚠️ 表格和「选中 N」**必须共用这一个函数** —— 否则显示一套顺序、选中另一套，
+  //       勾出来就会"中间空一片"（2026-10-14 牛牛实拍到的 bug：看着是断开的几段，不是连续一条带）。
+  function sortByBatchDesc(list) {
+    return list.slice().sort(function (a, b) { return (b.batch || 0) - (a.batch || 0); });
+  }
+  // 某个「数据类型」对应的候选池，**按它在表格里的实际显示顺序**排好。
+  //   · 未完成那几档 → 按上传批次倒序（和 tableCard 里那行用的是同一个函数）
+  //   · 'done' 档     → 走 sortDoneRows（和已完成折叠区里那行用的是同一个函数）
+  function typePoolInDisplayOrder(v) {
+    return (v === 'done') ? sortDoneRows(typePool(v)) : sortByBatchDesc(typePool(v));
+  }
   // 自下而上取最多 n 条（不足 n 则全取）。
-  // ⚠️ 2026-10-14 改口：**未完成区按"上传批次"倒序显示**（最新上传的在上、最旧的在下，见 tableCard），
-  //    所以「从列表底部往上数」= 从**最旧的**开始数 → 这里取**开头 n 条**（`slice(0, n)`）。
-  //    ⚠️ 改之前是取**末尾** n 条（= 最新导入的），**这个行为已经反过来了**：
-  //       现在按 ✓ 勾到的是最旧的那批，不是最新的那批。
+  // ⚠️ 2026-10-14 定稿：**按表格的显示顺序，从最下面往上数 n 条** ——
+  //    未完成区按上传批次倒序（最旧的在最下），所以取到的是**最旧的 n 条**，
+  //    而且一定是**连续一段**，中间不会有空洞（这是和"按导入顺序取"最大的区别）。
   function typePick(n) {
-    var list = typePool(pickType);
-    return list.slice(0, n);
+    var list = typePoolInDisplayOrder(pickType);
+    return list.slice(Math.max(0, list.length - n));
   }
   // ---------- 「选中 N」默认 = 全选（2026-10-13 牛牛要求：「打开就自动全勾上」）----------
   // 进数据页 / 换设备 / 换群组时，**自动把当前「数据类型」那一类整类勾上**，不用先手点。
@@ -2496,13 +2518,13 @@
     var showCheck = true;                           // 有勾选列
     var isGrp = (scopeKey === GRP_KEY);
     // ⚠️ 2026-10-14 牛牛要求：**未完成区按"上传批次"倒序** —— 最新上传的那份文档的数据在最上，
-    //    同一份文档（同一批次）内部**保持原顺序**（靠稳定排序保证）。
+    //    同一份文档（同一批次）内部**保持原顺序**（靠稳定排序保证）。见上方 sortByBatchDesc()。
     //    `rows` 本身仍是导入正序，这里只排**渲染用的副本**。
     //    · 老数据没有 `batch` 字段 → 当作第 0 批 → 永远沉在最下面
-    //    · 「选中 N」= 从最旧的开始数（见 typePick），而最旧的正好在列表最下面 → 和"从下面数"一致
+    //    · ⚠️ 「选中 N」**必须用同一个 sortByBatchDesc**（见 typePoolInDisplayOrder）——
+    //      不然显示一套顺序、选中另一套，勾出来会"中间空一片"
     //    · 已完成区**不按批次排**（它有自己的定稿：原顺序为主 + 同群名聚在一起，见 sortDoneRows）
-    var active = vis.filter(function (r) { return r.status !== 'done'; });
-    active.sort(function (a, b) { return (b.batch || 0) - (a.batch || 0); });
+    var active = sortByBatchDesc(vis.filter(function (r) { return r.status !== 'done'; }));
     var done = sortDoneRows(vis.filter(function (r) { return r.status === 'done'; }));
     var collapsed = doneCollapsed[scopeKey] !== false;
     // 表头「全选」复选框的候选行 —— ⚠️ 必须走 cardPickable(scopeKey)（当前作用域内的可操作行）：
