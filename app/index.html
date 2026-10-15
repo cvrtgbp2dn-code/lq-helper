@@ -526,6 +526,8 @@
      ⚠️ 只用 --red-bg / --text 这类已有变量，不写死颜色（暗色模式下自动跟着变）。 */
   .arc-warn { margin-top: 13px; padding: 10px 12px; border-radius: 8px; font-size: 13.5px; line-height: 1.7;
               background: var(--red-bg); color: var(--text); }
+  /* 弹窗正文里的一句「要当心」的纯文字（2026-10-15）—— 替掉原来散在各处的 inline style="color:var(--red)" */
+  .warn-txt { color: var(--red); font-size: 13px; }
 
   /* ==========================================================================
      仪表盘（2026-10-13 重做：velora 背景网格 + VanishInput 胶囊搜索框）
@@ -1333,7 +1335,7 @@
     // ③ 不使用
     h += '<div class="rs-opt' + (ROSTER_MODE === 'none' ? ' on' : '') + '" data-act="rsMode" data-mode="none">' +
       '<span class="rs-radio"></span><div style="flex:1"><b>不使用</b>' +
-      '<div class="rs-sub">关闭「在库」检测，所有数据都按正常流程走</div></div></div>';
+      '<div class="rs-sub">关掉「不在库」检测，所有数据都按正常流程走</div></div></div>';
     return h;
   }
   // 切换来源（互斥）。先把当前这份存进它自己的槽位，再读取目标槽位 —— 来回切换不丢数据、不重复下载。
@@ -1616,8 +1618,8 @@
           }
           mainView = 'data';       // 导入完成，主区从导入页切回数据表
           save(); render();
-          toast('导入完成：新增 ' + added + ' 条' + (dup ? '，按数据ID去重跳过 ' + dup + ' 条' : '') +
-            (devs.length ? '（已切到 ' + devs[0] + (devs.length > 1 ? ' 等 ' + devs.length + ' 个设备' : '') + '）' : ''));
+          toast('导入完成：新增 ' + added + ' 条' + (dup ? '，重复的跳过 ' + dup + ' 条' : '') +
+            (devs.length ? '。已切到「' + devs[0] + '」' + (devs.length > 1 ? '等 ' + devs.length + ' 个设备' : '') : ''));
         }
       };
       reader.readAsArrayBuffer(f);
@@ -1743,7 +1745,7 @@
     return '；已归档 ' + arc.n + ' 条更早的已完成数据（每台设备只留最近 ' + KEEP_DONE_GROUPS + ' 个群组）';
   }
   // ⚠️ 2026-10-15 牛牛反馈：一点「导出表格」就**直接弹系统保存框**，提示被挡在后面看不见。
-  //   改成：**先弹确认框 → 点「确定导出」才下载**（顺序不能反，见下）。预告里顺便把
+  //   改成：**先弹确认框 → 点「导出」才下载**（顺序不能反，见下）。预告里顺便把
   //   「本次会归档多少条」用同一套规则先算好摊开说 —— 因为归档是**真的删除**，不能让人稀里糊涂点下去。
   function askExport() {
     var t = launchedTargets();
@@ -1769,7 +1771,7 @@
     openModal({
       title: '导出已拉群数据',
       bodyHtml: body,
-      okText: '确定导出',
+      okText: '导出',
       okRed: p.kill.length > 0,                   // 有归档 = 有真删除 → 主按钮走红色
       onOk: function () { mainView = 'data'; doExport(t); }
     });
@@ -1806,10 +1808,10 @@
   // 导出未分配前的确认弹窗：问「要不要顺手把这些未分配标成已完成」
   function askExportNone() {
     var t = unassignedTargets();
-    if (!t.length) { toast('没有可导出的「未分配」数据（不含不在库）'); return; }
+    if (!t.length) { toast('没有可导出的「未分配」数据（「不在库」的不算）'); return; }
     // 预告：只有勾了「标记为已完成」才会触发归档，所以按"勾选后"的情况先算一遍
     var p = archivePlanWith(t, Date.now());
-    var body = '将导出 <b class="n">' + t.length + '</b> 条「未分配」数据（<b>不含不在库</b>），三列：' +
+    var body = '将导出 <b class="n">' + t.length + '</b> 条「未分配」数据（不含「不在库」），三列：' +
       '数据昵称 / 数据ID / 设备名。' +
       '<label class="mk-done"><input type="checkbox" id="mkDone">导出后把这些数据标记为「已完成」</label>' +
       '<p class="muted" style="margin-top:10px">不勾选则只导出，不改动任何数据状态。</p>';
@@ -1822,7 +1824,7 @@
     openModal({
       title: '导出未分配数据',
       bodyHtml: body,
-      okText: '确定导出',
+      okText: '导出',
       okRed: p.kill.length > 0,
       onOk: function () {
         // ⚠️ closeModal() 不会清空 modalBody，所以这里还能读到那个勾选框
@@ -2243,10 +2245,10 @@
   function selNumConfirm() {
     var box = $('selNum'); if (!box) return;
     var n = parseInt(String(box.value).replace(/[^\d]/g, ''), 10);
-    if (!n || n < 1) { toast('请先填一个大于 0 的数字'); return; }
+    if (!n || n < 1) { toast('先填个数字，比如 5'); return; }
     var label = typeLabel(pickType);
     var list = typePick(n);
-    if (!list.length) { toast('没有可选的「' + label + '」数据'); return; }
+    if (!list.length) { toast('「' + label + '」里暂时没有数据'); return; }
     selected = {};
     list.forEach(function (r) { selected[r.k] = true; });
     box.classList.remove('dirty');
@@ -2259,7 +2261,7 @@
     if (needRender) render(); else refreshSelectionUI();
     var tr = document.querySelector('tr[data-k="' + list[0].k + '"]');
     if (tr && tr.scrollIntoView) { try { tr.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (x) {} }
-    toast('已自下而上选中 ' + list.length + ' 个「' + label + '」');
+    toast('已从下往上选中 ' + list.length + ' 条「' + label + '」');
   }
   // 输入框后面的 ✗（Esc 同）：**取消选中 = 把所有勾选全清掉**（牛牛 2026-10-13：「点 ✗ 是清空所有勾选，全清」）。
   // ⚠️ 旧实现只是"把输入框恢复成真实选中数、一个勾都不动"，所以点了跟没点一样 —— 那是个 bug。
@@ -2271,7 +2273,7 @@
     refreshSelectionUI();
     if (box) { box.value = '0'; box.classList.remove('dirty'); }
     if (had) toast('已取消选中 ' + had + ' 条');
-    else toast('当前没有选中的数据');
+    else toast('现在一条都没勾选');
   }
   // 只刷新与选中相关的界面（勾选数 + 行勾选框 + 表头全选框/半选态），不重绘整个列表
   function refreshSelectionUI() {
@@ -2453,7 +2455,7 @@
       var vis = list.filter(matchFilters);
       if (vis.length) html += tableCard(dev, vis);
       else if (!list.length) html += emptyGroupCard(dev);
-      else html += '<div class="empty">没有匹配的数据</div>';
+      else html += '<div class="empty">没有符合当前条件的数据 —— 试试清掉筛选或搜索词</div>';
     }
     html += '<div class="vb-spacer"></div>';
     html += viewBarHtml();
@@ -2589,7 +2591,7 @@
       if (r.group) gset[r.group] = true;
     });
     return '<div class="vb-stats">' +
-      '<span class="v-total">本组人数 <b>' + nTotal + '</b></span><span class="sep">·</span>' +
+      '<span class="v-total">本组条数 <b>' + nTotal + '</b></span><span class="sep">·</span>' +
       '<span class="v-ool">不在库 <b>' + nOol + '</b></span><span class="sep">·</span>' +
       '<span class="v-pending">已分配 <b>' + nPend + '</b></span><span class="sep">·</span>' +
       '<span class="v-launched">已拉群 <b>' + nLaunch + '</b></span><span class="sep">·</span>' +
@@ -2684,7 +2686,7 @@
   }
   // 侧栏一行群组：群名 + 总人数；悬停 title 看每台设备各几人（牛牛："只在悬停时用提示显示"）
   function grpListItemHtml(g, m) {
-    var tip = Object.keys(m[g].devs).map(function (d) { return d + ' ' + m[g].devs[d] + ' 人'; }).join('\n');
+    var tip = Object.keys(m[g].devs).map(function (d) { return d + ' ' + m[g].devs[d] + ' 条'; }).join('\n');
     var on = (mainView === 'data' && groupScope === g);
     return '<div class="grp-item' + (on ? ' active' : '') + '" data-act="pickGrp" data-g="' + esc(g) + '"' +
       ' title="' + esc(g + '\n' + tip + '\n点击查看这个群（所有设备）') + '">' +
@@ -2859,7 +2861,7 @@
 
   function emptyGroupCard(dev) {
     return '<div class="group-card" data-dev="' + esc(dev) + '">' +
-      '<div class="empty-group">该设备暂无数据，请直接导入该设备的采集文件</div></div>';
+      '<div class="empty-group">这台设备还没有数据 —— 点左下角「导入粉丝」，把它的采集文件导进来</div></div>';
   }
 
   // 全部视图已删除 —— 原来的 allViewCard（多设备合并成一张表）随之去掉。
@@ -2969,7 +2971,7 @@
       if (!val || val === row.id) return;
       var dup = false;
       rows.forEach(function (x) { if (x !== row && x.id === val) dup = true; });
-      if (dup) { toast('数据ID「' + val + '」已存在，未修改'); return; }
+      if (dup) { toast('数据ID「' + val + '」已经有了，没改'); return; }
       row.id = val;
     }
   }
@@ -2983,9 +2985,9 @@
   // applyGroup(name, keys?)：keys 省略时用「当前勾选」（操作栏「修改类型 → 设置群名称」就是走这条）。
   function applyGroup(name, keys) {
     name = (name || '').trim();
-    if (!name) { toast('请先输入群名称'); return; }
+    if (!name) { toast('还没填群名'); return; }
     keys = keys || Object.keys(selected).filter(function (kk) { return selected[kk]; });
-    if (!keys.length) { toast('请先勾选要操作的人'); return; }
+    if (!keys.length) { toast('还没勾选数据 —— 先在每行前面的方格里打个勾'); return; }
     var inKeys = {}; keys.forEach(function (x) { inKeys[x] = true; });
     var n = 0, nSkip = 0;
     rows.forEach(function (r) {
@@ -2997,7 +2999,7 @@
       r.group = name; r.status = 'pending'; n++;
     });
     if (!n) {
-      toast(nSkip ? ('勾选的 ' + nSkip + ' 条都是「已完成」的，要先点「恢复」退回已拉群才能改群名')
+      toast(nSkip ? ('勾选的 ' + nSkip + ' 条都是「已完成」的 —— 先点「恢复」退回「已拉群」，才能改群名')
                   : '选中的行无法设为已分配');
       return;
     }
@@ -3005,7 +3007,7 @@
     selected = {};               // 执行后取消勾选
     save(); render();
     // ⚠️ 2026-10-14：撤销只保留「删除」类 —— 改群名不再挂撤销
-    toast('已将 ' + n + ' 人设为「已分配」，群名：' + name +
+    toast('已将 ' + n + ' 条设为「已分配」，群名：' + name +
           (nSkip ? '（另有 ' + nSkip + ' 条已完成被跳过，需先恢复）' : ''));
   }
   // ---------- 批量修改（2026-10-13 新增；第二轮扩成 5 个动作，挂在操作栏「修改类型」下拉上）----------
@@ -3016,26 +3018,34 @@
   //   ⚠️ 选项集合由 BATCH_MENU 按 pickType 给，这里只负责分发（不再有「删除」）。
   function batchPick(v) {
     if (!v) return;
-    if (v === 'group') batchSetGroup();
-    else if (v === 'launched') batchSetLaunched();
-    else if (v === 'unassign') batchSetUnassign();
-    else if (v === 'assign') batchSetAssigned();
+    var lbl = batchOptionLabel(v);
+    if (v === 'group') batchSetGroup(lbl);
+    else if (v === 'launched') batchSetLaunched(lbl);
+    else if (v === 'unassign') batchSetUnassign(lbl);
+    else if (v === 'assign') batchSetAssigned(lbl);
     else if (v === 'restore') restoreDone();          // 「设为已拉群」在「已完成」那一档 = 原来的「↺ 恢复」
+  }
+  // 「修改类型」当前档里某个动作显示的文字。
+  // ⚠️ 弹窗标题跟着它走 —— 免得菜单写「退回未分配」、弹窗却写「设为未分配」，同一次点击两个说法。
+  function batchOptionLabel(v) {
+    var items = BATCH_MENU[pickType] || BATCH_MENU.all;
+    for (var i = 0; i < items.length; i++) if (items[i][0] === v) return items[i][1];
+    return '';
   }
   // 「修改类型」里各项统一的前置检查：没勾选就给一句指路，别让小窗白弹。
   function batchKeysOrHint() {
     var keys = selKeys();
-    if (!keys.length) toast('请先在「选中」里挑人：填个数字 → 点 ✓');
+    if (!keys.length) toast('还没勾选数据：先在「选中」里填个数字 → 点 ✓');
     return keys;
   }
   // ① 设置群名称：小窗里输入。**留空 + 回车/确定 = 清空群名、退回「未分配」**（牛牛要求保留这个语义）
-  function batchSetGroup() {
+  function batchSetGroup(title) {
     var keys = batchKeysOrHint();
     if (!keys.length) return;
     openModal({
-      title: '设置群名称',
-      bodyHtml: '已勾选 <b class="n">' + keys.length + '</b> 条数据，填个群名给它们 ——' +
-        '<div class="muted" style="margin-top:8px">留空直接确定 = 清空群名，退回「未分配」。</div>',
+      title: title || '设置群名称',
+      bodyHtml: '给已勾选的 <b class="n">' + keys.length + '</b> 条数据填一个群名。' +
+        '<div class="muted" style="margin-top:8px">填完它们就变成「已分配」。留空直接确定 = 清空群名，退回「未分配」。</div>',
       input: { placeholder: '输入群名（留空 = 清空群名）' },
       okText: '确定',
       allowEmpty: true,                 // ⚠️ 必须允许空输入 —— 「清空群名」就是靠空值走的
@@ -3044,31 +3054,31 @@
         if (name) { applyGroup(name, keys); return; }
         var has = false;
         keys.forEach(function (k) { var r = findRow(k); if (r && r.group) has = true; });
-        if (!has) { toast('勾选的数据本来就没有群名'); return; }
+        if (!has) { toast('勾选的这些本来就没有群名'); return; }
         clearGroup(keys);
       }
     });
   }
   // ② 设为已拉：只弹一个提醒窗（真正干活的还是 markLaunched —— 跳过非「已分配」、报数、撤销都归它）
-  function batchSetLaunched() {
+  function batchSetLaunched(title) {
     var keys = batchKeysOrHint();
     if (!keys.length) return;
     var nPend = 0;
     keys.forEach(function (k) { var r = findRow(k); if (r && r.status === 'pending') nPend++; });
-    if (!nPend) { toast('勾选的数据里没有「已分配」的（要先把群名填上）'); return; }
+    if (!nPend) { toast('勾选的里没有「已分配」的数据 —— 先用「设置群名称」填上群名，它们才会变成「已分配」'); return; }
     var nOther = keys.length - nPend;
     openModal({
-      title: '设为已拉群',
-      bodyHtml: '把这 <b class="n">' + nPend + '</b> 条「已分配」的数据设为「<b>已拉群</b>」？' +
-        '<div class="muted" style="margin-top:8px">设成「已拉群」之后，这批数据就能用「导出表格」导出来了 —— 没设成已拉群的是导不出去的。</div>' +
-        (nOther ? '<div class="muted" style="margin-top:6px">另外 ' + nOther + ' 条不是「已分配」，会自动跳过。</div>' : ''),
+      title: title || '设为已拉群',
+      bodyHtml: '把 <b class="n">' + nPend + '</b> 条「已分配」的数据设为「<b>已拉群</b>」。' +
+        '<div class="muted" style="margin-top:8px">只有「已拉群」的数据能用「导出表格」导出。' +
+        (nOther ? '另外 ' + nOther + ' 条不是「已分配」，会自动跳过。' : '') + '</div>',
       okText: '确定',
       onOk: function () { markLaunched(); }
     });
   }
   // ③ 设为未分配：**清空群名 + 退回「未分配」**（「已完成」不动，会数出来告诉用户）。带 6 秒撤销。
   //    会丢掉群名 → 先弹个红色确认窗（比"直接执行"稳），撤销按钮还在提示条上兜底。
-  function batchSetUnassign() {
+  function batchSetUnassign(title) {
     var keys = batchKeysOrHint();
     if (!keys.length) return;
     var n = 0, nDone = 0;
@@ -3079,12 +3089,12 @@
       if (r.status === 'none' && !r.group) return;   // 本来就是未分配，不算
       n++;
     });
-    if (!n) { toast(nDone ? ('勾选的 ' + nDone + ' 条是「已完成」的，请先「设为已拉群」恢复') : '勾选的数据本来就在「未分配」'); return; }
+    if (!n) { toast(nDone ? ('勾选的 ' + nDone + ' 条是「已完成」的 —— 先「设为已拉群」恢复，再设未分配') : '勾选的这些本来就是「未分配」'); return; }
     openModal({
-      title: '设为未分配',
-      bodyHtml: '把这 <b class="n">' + n + '</b> 条数据设为「<b>未分配</b>」？' +
-        '<div class="muted" style="margin-top:8px">它们身上的<b>群名会被清掉</b>，回到「未分配」。</div>' +
-        (nDone ? '<div class="muted" style="margin-top:6px">另外 ' + nDone + ' 条是「已完成」，会自动跳过。</div>' : ''),
+      title: title || '设为未分配',
+      bodyHtml: '把 <b class="n">' + n + '</b> 条数据设为「<b>未分配</b>」。' +
+        '<div class="muted" style="margin-top:8px">它们身上的<b>群名会被清掉</b>，回到「未分配」。' +
+        (nDone ? '另外 ' + nDone + ' 条是「已完成」，会自动跳过。' : '') + '</div>',
       okText: '确定', okRed: true,
       onOk: function () { setUnassign(keys); }
     });
@@ -3111,7 +3121,7 @@
     selected = {};
     save(); render();
     toast('已删除 ' + snap.length + ' 条数据' +
-      (doneN ? '。⚠️ 这些数据ID没留存，下次再导入还会进来' : ''), function () {
+      (doneN ? '。⚠️ 这批的ID没留存，下次导入还会进来' : ''), function () {
       snap.slice().sort(function (a, b) { return a.i - b.i; }).forEach(function (s) { rows.splice(s.i, 0, s.r); });
       save(); render(); toast('已撤销删除');
     });
@@ -3122,13 +3132,13 @@
   //   · 带撤销（6 秒），和别处一致
   function markLaunched() {
     var keys = Object.keys(selected).filter(function (kk) { return selected[kk]; });
-    if (!keys.length) { toast('请先勾选要标记的数据（或用左边的「未分配」/「已分配」按钮）'); return; }
+    if (!keys.length) { toast('还没勾选数据 —— 先在每行前面打个勾，或用「数据类型 + 选中 N」批量选'); return; }
     var hit = [], nSkip = 0;
     keys.forEach(function (k) {
       var r = findRow(k);
       if (r && r.status === 'pending') hit.push(r); else nSkip++;
     });
-    if (!hit.length) { toast('勾选的数据里没有「已分配」的（已拉群要先把群名填上）'); return; }
+    if (!hit.length) { toast('勾选的里没有「已分配」的数据 —— 「已拉群」得先有群名，用「设置群名称」填上'); return; }
     hit.forEach(function (r) { r.status = 'launched'; });
     selected = {};
     save(); render();
@@ -3143,7 +3153,7 @@
   //   · 恢复完把勾选清掉（它们已经换到上面「进行中」区了，留着勾选容易误操作）
   function restoreDone() {
     var keys = Object.keys(selected).filter(function (kk) { return selected[kk]; });
-    if (!keys.length) { toast('请先勾选要恢复的数据（已完成的行在下面折叠区里）'); return; }
+    if (!keys.length) { toast('还没勾选数据 —— 已完成的行要先在下面展开折叠区，才勾得到'); return; }
     var inKeys = {}; keys.forEach(function (x) { inKeys[x] = true; });
     var n = 0, nPend = 0, nNone = 0;
     rows.forEach(function (r) {
@@ -3154,7 +3164,7 @@
       delete r.doneAt;                                             // 退回就不再是「已完成」，时间戳一并清掉
       n++;
     });
-    if (!n) { toast('勾选的数据里没有「已完成」的 —— 它们要先展开才能勾到'); return; }
+    if (!n) { toast('勾选的里没有「已完成」的 —— 已完成的行要先展开折叠区，才勾得到'); return; }
     keys.forEach(function (x) { delete selected[x]; });
     save(); render();
     var msg = '已恢复 ' + n + ' 条';
@@ -3179,7 +3189,7 @@
     selected = {};                       // 不管有没有改到，都退出当前选择状态
     if (!n) {
       render();
-      toast(nDone ? ('勾选的 ' + nDone + ' 条是「已完成」的，要先点「设为已拉群」恢复') : '勾选的数据本来就在「未分配」');
+      toast(nDone ? ('勾选的 ' + nDone + ' 条是「已完成」的 —— 先「设为已拉群」恢复') : '勾选的这些本来就是「未分配」');
       return;
     }
     save(); render();
@@ -3201,9 +3211,9 @@
     selected = {};
     if (!n) {
       render();
-      toast(nDone ? ('勾选的 ' + nDone + ' 条是「已完成」的，要先点「设为已拉群」恢复')
-                  : (nNoGrp ? '勾选的数据还没有群名，先「设置群名称」才会进「已分配」'
-                            : '勾选的数据已经在「已分配」了'));
+      toast(nDone ? ('勾选的 ' + nDone + ' 条是「已完成」的 —— 先「设为已拉群」恢复')
+                  : (nNoGrp ? '勾选的这些还没群名 —— 先用「设置群名称」填上，才会进「已分配」'
+                            : '勾选的这些已经是「已分配」了'));
       return;
     }
     save(); render();
@@ -3268,7 +3278,7 @@
       if (locHitTm) clearTimeout(locHitTm);
       locHitTm = setTimeout(function () { tr.classList.remove('loc-hit'); }, 3000);
     } else {
-      toast('这条数据暂时看不到（可能被别的条件挡住了）');
+      toast('这条数据现在看不到 —— 可能被筛选或搜索条件挡住了');
     }
   }
 
@@ -3290,8 +3300,8 @@
     selected = {};
     if (!n) {
       render();
-      toast(nSkip ? ('勾选的 ' + nSkip + ' 条是「已完成」的，要先点「恢复」才能退群名')
-                  : '勾选的数据本来就没有群名');
+      toast(nSkip ? ('勾选的 ' + nSkip + ' 条是「已完成」的 —— 先「恢复」才能退群名')
+                  : '勾选的这些本来就没有群名');
       return;
     }
     save(); render();
@@ -3393,10 +3403,10 @@
       var dd = t.getAttribute('data-dev');
       openModal({
         title: '删除设备',
-        bodyHtml: '<div class="muted">将永久删除设备「<b>' + esc(dd) + '</b>」及其下 <b class="n">' +
-          rows.filter(function (r) { return r.device === dd; }).length + '</b> 条数据，以及该设备的<b>去重记录</b>。</div>' +
-          '<p class="muted" style="margin-top:10px">⚠️ 不能撤销。删除后这台设备的采集文件可以重新导入（不会被去重挡住）。</p>',
-        okText: '确定删除',
+        bodyHtml: '<div class="muted">将永久删除设备「<b>' + esc(dd) + '</b>」、它下面的 <b class="n">' +
+          rows.filter(function (r) { return r.device === dd; }).length + '</b> 条数据，以及这台设备的<b>去重名单</b>。</div>' +
+          '<p class="muted" style="margin-top:10px">⚠️ 不能撤销。删掉以后，这台设备的采集文件可以重新导入（不会被去重挡住）。</p>',
+        okText: '删除',
         okRed: true,
         onOk: function () {
           var goneKeys = {};
@@ -3409,7 +3419,7 @@
           delete usedIds[dd];                       // ⚠️ 连带清掉该设备的归档去重名单
           if (filterDevice === dd) filterDevice = deviceOrder[0] || '';   // 删掉的正是当前设备 → 退回第一个
           save(); render();
-          toast('已删除设备「' + dd + '」及其去重记录');
+          toast('已删除设备「' + dd + '」，它的去重名单也一起清了');
         }
       });
       return;
@@ -3428,7 +3438,7 @@
         } else if (ROSTER_MODE === 'local') {
           toast('已切到「本地上传名单库」，点「选择文件…」导入');
         } else {
-          toast('已关闭「在库」检测');
+          toast('已关闭「不在库」检测');
         }
       });
       return;
@@ -3463,7 +3473,7 @@
       rows = rows.filter(function (r) { return r.k !== rk; });
       delete selected[rk];
       save(); render();
-      if (wasDone) toast('已删除。⚠️ 这条已完成数据的ID没留存，下次再导入还会进来');
+      if (wasDone) toast('已删除。⚠️ 这条的ID没留存，下次导入还会进来');
     }
     else if (act === 'delSel') {
       // 表头垃圾桶 = **删除选中**（牛牛 2026-10-13 改）：
@@ -3473,10 +3483,10 @@
       var vis = viewRows().filter(function (r) { return dev === GRP_KEY || r.device === dev; });
       var visKeys = {}; vis.forEach(function (r) { visKeys[r.k] = true; });
       var keys = selKeys().filter(function (k) { return visKeys[k]; });
-      if (!keys.length) { toast('请先勾选要删除的数据（表头左边的方格 / 每行前面的方格）'); return; }
+      if (!keys.length) { toast('还没勾选数据 —— 勾每行前面的方格，或点表头左边的方格全选'); return; }
       openModal({
         title: '删除数据',
-        bodyHtml: '要删掉勾选的 <b class="n">' + keys.length + '</b> 条数据吗？' +
+        bodyHtml: '删掉勾选的 <b class="n">' + keys.length + '</b> 条数据。' +
           '<div class="muted" style="margin-top:8px">删掉就找不回来了（确定之后还有 6 秒可以撤销）。</div>',
         okText: '删除', okRed: true,
         onOk: function () { deleteRowsByKeys(keys); }
@@ -3486,14 +3496,14 @@
       // 已完成区垃圾桶：删除本组「全部已完成」数据（与表头垃圾桶同逻辑：有确认），只对已完成有效
       // ⚠️ 同样收窄作用域（群组视图下整张表就是这个群）
       var dlist = viewRows().filter(function (r) { return (dev === GRP_KEY || r.device === dev) && r.status === 'done'; });
-      if (!dlist.length) { toast('本组没有已完成数据'); return; }
+      if (!dlist.length) { toast('这里没有已完成的数据'); return; }
       var dn = dlist.length;
       openModal({
         title: '删除全部已完成',
-        bodyHtml: '将删除本组 <b class="n">' + dn + '</b> 条已完成数据，确定继续吗？' +
+        bodyHtml: '将删除这里的 <b class="n">' + dn + '</b> 条已完成数据。' +
           '<div class="muted" style="margin-top:8px">删掉就找不回来了（确定之后还有 6 秒可以撤销）。' +
-          '<br>⚠️ 这些数据的<b>数据ID不会留存</b> —— 下次再导入还会被当成新数据加进来。</div>',
-        okText: '全部删除', okRed: true,
+          '<br>⚠️ 这些数据的<b>ID不会留存</b> —— 下次导入还会被当成新数据加进来。</div>',
+        okText: '删除', okRed: true,
         // ⚠️ 2026-10-14 牛牛要求：撤销只保留「删除」类 → 这个入口**补上撤销**。
         //    直接复用 deleteRowsByKeys —— 它已经带「按原位置插回 + 6 秒撤销」，不用再写一遍。
         onOk: function () { deleteRowsByKeys(dlist.map(function (r) { return r.k; })); }
@@ -3826,7 +3836,7 @@
           '<button class="btn red" data-act="delDev" data-dev="' + esc(dev) + '">删除</button>' +
           '</div>';
       });
-      body += '<div class="muted" style="margin-top:12px">删除设备会连同该设备下的数据一起删除；拖动行可调整侧栏与全部视图中的分组顺序。</div>';
+      body += '<div class="muted" style="margin-top:12px">删除设备会把它下面的数据一起去掉；拖动行可以调整侧栏里的设备顺序。</div>';
     }
     return '<div class="page-wrap"><div class="page-card">' + pageHead('管理设备') +
       '<div class="page-body">' + body + '</div></div></div>';
@@ -3844,7 +3854,7 @@
   function addDevOk() {
     var el = $('newDevName');
     var val = (el ? el.value : newDevVal).trim();
-    if (!val) { toast('请先输入设备名称'); if (el) el.focus(); return; }
+    if (!val) { toast('还没填设备名'); if (el) el.focus(); return; }
     if (deviceOrder.indexOf(val) !== -1) { toast('已存在同名设备：' + val); if (el) el.focus(); return; }
     deviceOrder.push(val);
     devManual[val] = true;                 // 标记为手动新增 → 即使没数据也保留在侧栏
@@ -3958,7 +3968,7 @@
       if (!q) return;
       var ms = locateFind(q);
       if (ms.length) dashGo2(ms[0].k);
-      else toast('没有找到「' + q + '」');
+      else toast('没找到「' + q + '」—— 只按昵称和数据ID搜，换个关键词试试');
     });
     // 背景：一个委托监听搞定全部格子
     var grid = document.querySelector('#dashBg > .dash-grid');
@@ -4079,11 +4089,12 @@
       var when = snap.at ? String(snap.at).replace('T', ' ').replace(/\..*$/, '') : '未知';
       openModal({
         title: '从备份恢复',
-        bodyHtml: '将用这个备份<b>替换掉当前的全部数据</b>。<br><br>' +
-          '备份内容：<b class="n">' + n.toLocaleString() + '</b> 条数据 · <b class="n">' + dn + '</b> 个设备<br>' +
-          '备份时间：' + esc(when) + '<br><br>' +
-          '<span style="color:var(--red)">恢复后 6 秒内可点提示条上的「撤销」退回。</span>',
-        okText: '确定恢复', okRed: true,
+        bodyHtml: '将用这个备份<b>替换掉当前的全部数据</b>。' +
+          '<div class="muted" style="margin-top:8px">备份内容：<b class="n">' + n.toLocaleString() +
+          '</b> 条数据 · <b class="n">' + dn + '</b> 个设备</div>' +
+          '<div class="muted">备份时间：' + esc(when) + '</div>' +
+          '<div class="warn-txt" style="margin-top:10px">恢复后 6 秒内可点提示条上的「撤销」退回。</div>',
+        okText: '恢复', okRed: true,
         onOk: function () { doRestore(snap); }
       });
     };
