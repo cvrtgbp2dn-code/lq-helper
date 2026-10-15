@@ -522,6 +522,10 @@
   .mk-done { display: flex; align-items: center; gap: 9px; margin-top: 15px; padding: 10px 12px;
              border: 1px solid var(--line); border-radius: 8px; font-size: 13.5px; cursor: pointer; user-select: none; }
   .mk-done input { margin: 0; flex-shrink: 0; }
+  /* 导出弹窗里「会自动归档」的警示块（2026-10-15）——
+     ⚠️ 只用 --red-bg / --text 这类已有变量，不写死颜色（暗色模式下自动跟着变）。 */
+  .arc-warn { margin-top: 13px; padding: 10px 12px; border-radius: 8px; font-size: 13.5px; line-height: 1.7;
+              background: var(--red-bg); color: var(--text); }
 
   /* ==========================================================================
      仪表盘（2026-10-13 重做：velora 背景网格 + VanishInput 胶囊搜索框）
@@ -1665,49 +1669,110 @@
     var d = new Date();
     return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '_' + pad(d.getHours()) + pad(d.getMinutes());
   }
-  // ⚠️ 2026-10-15 牛牛要求：**导出后自动归档**（只保留最近 2 个「已完成」群组）——
-  //   把「已完成」按**群组**分组 → 按每组**最晚的完成时间**倒序 → 只留前 2 个群组，
-  //   其余的**从 rows 里移走**；移走前把它们的**数据ID**记进该设备的归档名单（LS_USED），
+  // ⚠️ 2026-10-15 牛牛要求：**导出后自动归档**（每台设备只保留最近 2 个「已完成」群组）——
+  //   把「已完成」**先按设备分桶**，桶内再按**群组**分组 → 按每组**最晚的完成时间**倒序 →
+  //   每台设备只留前 2 个群组，其余的**从 rows 里移走**；
+  //   移走前把它们的**数据ID**记进该设备的归档名单（LS_USED），
   //   于是同样的数据下次再导入**不会被加回来**（去重）。
-  //   ⚠️ 只在「已完成群组数 > 2」时才动；没有 doneAt 的群按 0 算（= 最早）。
+  //   ⚠️⚠️ **一定要按设备分开算**（2026-10-15 被牛牛抓到的 bug）：
+  //     第一版是"所有设备合起来只留 2 个群组"，结果一台单设备的已完成区被整片清空。
+  //   ⚠️ 只在「该设备已完成群组数 > 2」时才动；没有 doneAt 的群按 0 算（= 最早）。
   //   ⚠️ 移走 = **真的没了**（牛牛："删掉的不要能查"）—— 除了备份没有别的退路，改这里要极其小心。
   //   ⚠️ 与「手动删除已完成」的区别：手动删**不留 ID**（下次还能导进来，牛牛明确要这样）。
   var KEEP_DONE_GROUPS = 2;
-  function archiveDone() {
-    var byG = {}, order = [];
-    rows.forEach(function (r) {
+  // 纯计算版：只算出"会移走哪些行"，**不碰任何数据** —— 导出前的弹窗预告 & 真正归档共用同一套规则，
+  // 保证"预告说的"和"最后做的"永远一致。
+  // ⚠️ `list` 传进来的每一行只需有 k/device/group/status/doneAt。
+  function archivePlanOf(list) {
+    var byDev = {}, devOrder = [];
+    list.forEach(function (r) {
       if (r.status !== 'done') return;
-      var g = r.group || '';
-      if (!(g in byG)) { byG[g] = { g: g, last: 0, rows: [] }; order.push(g); }
-      byG[g].rows.push(r);
-      if ((r.doneAt || 0) > byG[g].last) byG[g].last = r.doneAt || 0;
+      var dev = r.device || '', g = r.group || '';
+      if (!(dev in byDev)) { byDev[dev] = { map: {}, order: [] }; devOrder.push(dev); }
+      var d = byDev[dev];
+      if (!(g in d.map)) { d.map[g] = { g: g, last: 0, rows: [] }; d.order.push(g); }
+      var e = d.map[g];
+      e.rows.push(r);
+      if ((r.doneAt || 0) > e.last) e.last = r.doneAt || 0;
     });
-    if (order.length <= KEEP_DONE_GROUPS) return { n: 0, groups: [] };
-    // 按「最晚完成时间」倒序 —— sort 稳定，时间相同就保持群组首次出现的先后
-    var list = order.map(function (g) { return byG[g]; });
-    list.sort(function (a, b) { return b.last - a.last; });
-    var kill = list.slice(KEEP_DONE_GROUPS);
-    var killKeys = {}, killGroups = [];
-    kill.forEach(function (c) {
-      killGroups.push(c.g);
-      c.rows.forEach(function (r) {
-        killKeys[r.k] = true;
-        if (r.id) {
-          if (!usedIds[r.device]) usedIds[r.device] = [];
-          if (usedIds[r.device].indexOf(r.id) === -1) usedIds[r.device].push(r.id);
-        }
+    var kill = [], killGroups = [], kept = 0, total = 0;
+    devOrder.forEach(function (dev) {
+      var d = byDev[dev];
+      total += d.order.length;
+      // 按「最晚完成时间」倒序 —— sort 稳定，时间相同就保持群组首次出现的先后
+      var lst = d.order.map(function (g) { return d.map[g]; });
+      lst.sort(function (a, b) { return b.last - a.last; });
+      lst.slice(0, KEEP_DONE_GROUPS).forEach(function () { kept++; });
+      lst.slice(KEEP_DONE_GROUPS).forEach(function (c) {
+        killGroups.push(c.g);
+        c.rows.forEach(function (r) { kill.push(r); });
       });
+    });
+    return { kill: kill, groups: killGroups, kept: kept, total: total };
+  }
+  function archivePlan() { return archivePlanOf(rows); }
+  // 导出前的预告：把 `targets`（即将变成「已完成」的那些行）代入后再算一遍
+  function archivePlanWith(targets, t) {
+    var hit = {};
+    (targets || []).forEach(function (r) { hit[r.k] = true; });
+    return archivePlanOf(rows.map(function (r) {
+      if (!hit[r.k]) return r;
+      return { k: r.k, id: r.id, device: r.device, group: r.group, status: 'done', doneAt: t };
+    }));
+  }
+  function archiveDone() {
+    var p = archivePlan();
+    if (!p.kill.length) return { n: 0, groups: [], kept: p.kept, total: p.total };
+    var killKeys = {};
+    p.kill.forEach(function (r) {
+      killKeys[r.k] = true;
+      if (r.id) {
+        if (!usedIds[r.device]) usedIds[r.device] = [];
+        if (usedIds[r.device].indexOf(r.id) === -1) usedIds[r.device].push(r.id);
+      }
     });
     var before = rows.length;
     rows = rows.filter(function (r) { return !killKeys[r.k]; });
     for (var kk in killKeys) delete selected[kk];
     save();
-    return { n: before - rows.length, groups: killGroups };
+    return { n: before - rows.length, groups: p.groups, kept: p.kept, total: p.total };
   }
   // 归档结果 → 提示条后缀（没归档就返回空串）
   function arcNote(arc) {
     if (!arc || !arc.n) return '';
-    return '；已归档 ' + arc.n + ' 条更早的已完成数据（只留最近 ' + KEEP_DONE_GROUPS + ' 个群组）';
+    return '；已归档 ' + arc.n + ' 条更早的已完成数据（每台设备只留最近 ' + KEEP_DONE_GROUPS + ' 个群组）';
+  }
+  // ⚠️ 2026-10-15 牛牛反馈：一点「导出表格」就**直接弹系统保存框**，提示被挡在后面看不见。
+  //   改成：**先弹确认框 → 点「确定导出」才下载**（顺序不能反，见下）。预告里顺便把
+  //   「本次会归档多少条」用同一套规则先算好摊开说 —— 因为归档是**真的删除**，不能让人稀里糊涂点下去。
+  function askExport() {
+    var t = launchedTargets();
+    if (!t.length) { toast('还没有「已拉群」的数据：先在操作栏「修改类型」里选「设为已拉群」再导出'); return; }
+    var p = archivePlanWith(t, Date.now());       // 纯计算，不改数据
+    var devs = {};
+    t.forEach(function (r) { devs[r.device] = (devs[r.device] || 0) + 1; });
+    var devNames = Object.keys(devs);
+    var body = '将导出 <b class="n">' + t.length + '</b> 条「已拉群」数据（共 <b class="n">' + devNames.length +
+      '</b> 台设备），并把它们<b>全部标记为「已完成」</b>。' +
+      '<p class="muted" style="margin-top:8px">' +
+      devNames.map(function (d) { return esc(d) + ' ' + devs[d] + ' 条'; }).join('　·　') + '</p>';
+    if (p.kill.length) {
+      body += '<div class="arc-warn"><b>导出后会顺手归档：</b>每台设备只保留最近 ' + KEEP_DONE_GROUPS +
+        ' 个「已完成」群组，本次要移走 <b class="n">' + p.kill.length + '</b> 条（<b class="n">' +
+        p.groups.length + '</b> 个群组：' + esc(p.groups.slice(0, 6).join('、')) +
+        (p.groups.length > 6 ? ' 等' : '') + '）。<br>' +
+        '这些数据的<b>「数据ID」会被留存</b>（以后重复导入不会再进来），但数据本身在界面上不再显示，' +
+        '<b>只能靠「数据备份」里的备份文件找回</b>。</div>';
+    } else {
+      body += '<p class="muted" style="margin-top:10px">本次不会触发归档。</p>';
+    }
+    openModal({
+      title: '导出已拉群数据',
+      bodyHtml: body,
+      okText: '确定导出',
+      okRed: p.kill.length > 0,                   // 有归档 = 有真删除 → 主按钮走红色
+      onOk: function () { mainView = 'data'; doExport(t); }
+    });
   }
   function doExport(targets) {
     var blob = zipStore(buildXlsxParts(targets, { kind: 'launched' }));      // 真 .xlsx（OOXML）
@@ -1742,13 +1807,23 @@
   function askExportNone() {
     var t = unassignedTargets();
     if (!t.length) { toast('没有可导出的「未分配」数据（不含不在库）'); return; }
+    // 预告：只有勾了「标记为已完成」才会触发归档，所以按"勾选后"的情况先算一遍
+    var p = archivePlanWith(t, Date.now());
+    var body = '将导出 <b class="n">' + t.length + '</b> 条「未分配」数据（<b>不含不在库</b>），三列：' +
+      '数据昵称 / 数据ID / 设备名。' +
+      '<label class="mk-done"><input type="checkbox" id="mkDone">导出后把这些数据标记为「已完成」</label>' +
+      '<p class="muted" style="margin-top:10px">不勾选则只导出，不改动任何数据状态。</p>';
+    if (p.kill.length) {
+      body += '<div class="arc-warn"><b>若勾选「标记为已完成」：</b>导出后会顺手归档 —— 每台设备只保留最近 ' +
+        KEEP_DONE_GROUPS + ' 个「已完成」群组，预计移走 <b class="n">' + p.kill.length + '</b> 条（<b class="n">' +
+        p.groups.length + '</b> 个群组）。这些数据的「数据ID」会被留存，' +
+        '但数据本身在界面上不再显示，<b>只能靠备份找回</b>。</div>';
+    }
     openModal({
       title: '导出未分配数据',
-      bodyHtml: '将导出 <b class="n">' + t.length + '</b> 条「未分配」数据（<b>不含不在库</b>），三列：' +
-        '数据昵称 / 数据ID / 设备名。' +
-        '<label class="mk-done"><input type="checkbox" id="mkDone">导出后把这些数据标记为「已完成」</label>' +
-        '<p class="muted" style="margin-top:10px">不勾选则只导出，不改动任何数据状态。</p>',
+      bodyHtml: body,
       okText: '确定导出',
+      okRed: p.kill.length > 0,
       onOk: function () {
         // ⚠️ closeModal() 不会清空 modalBody，所以这里还能读到那个勾选框
         var box = $('mkDone');
@@ -3295,11 +3370,7 @@
       if (!devListCollapsed) grpListCollapsed = true;   // 展开设备列表 → 收起群组列表（互斥，2026-10-13）
       saveUI(); render(); return;
     }
-    if (act === 'doExport') {
-      var expTargets = launchedTargets();
-      if (!expTargets.length) { toast('还没有「已拉群」的数据：先在操作栏「修改类型」里选「设为已拉群」再导出'); return; }
-      mainView = 'data'; doExport(expTargets); return;
-    }
+    if (act === 'doExport') { askExport(); return; }
     // 导出未分配：先弹确认框问「要不要顺手标成已完成」，再导
     if (act === 'askExportNone') { askExportNone(); return; }
     // ---- 管理设备整页：改名 / 删除（排序走拖拽，见下方 drag 委托）----
