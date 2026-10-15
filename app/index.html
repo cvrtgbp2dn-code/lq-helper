@@ -814,7 +814,7 @@
   //   纯本地单文件没法自己读到版本 → **只能写死在这里**，所以**每次发版必须手动同步这一行**。
   //   ⚠️ 漏改不会报错、只会显示旧版号 → 测试套件里有一条「APP_VER 必须等于 桌面版/app/version.json 的 version」
   //      专门盯它（见 测试_音效.js），别绕过。
-  var APP_VER = '2026.10.15.4';
+  var APP_VER = '2026.10.15.5';
   var LS_KEY = 'lq_helper_rows_v2';
   var LS_DEV = 'lq_helper_dev_order_v2';
   var LS_MAN = 'lq_helper_dev_manual_v2';
@@ -926,9 +926,10 @@
   function setTheme(t) {
     THEME = (t === 'dark') ? 'dark' : 'light';
     applyTheme(); saveUI(); render();
-    toast(THEME === 'dark' ? '已切到暗色模式' : '已切回亮色模式');
+    // ⚠️ 显式传 'theme' —— 这条文案和"普通成功"分不开，光靠 sfxKindOf 认不出来（2026-10-16）
+    toast(THEME === 'dark' ? '已切到暗色模式' : '已切回亮色模式', null, 'theme');
   }
-  // ---------- 音效（2026-10-15 新增，牛牛选的「乙档」4 种音）----------
+  // ---------- 音效（2026-10-15 新增「乙档」4 种 → 2026-10-16 扩到「全套」8 种）----------
   //   ⚠️ 零依赖：**不引入任何音频文件**，全部用 Web Audio **现场合成**
   //      （三角波/正弦 + 极快起音 + 指数衰减 → 像 UI 提示音，不像报警器）。
   //   ⚠️⚠️ 浏览器自动播放策略：AudioContext 必须**用户第一次交互之后**才允许出声 →
@@ -965,13 +966,21 @@
     osc.connect(g); g.connect(_acMaster);
     osc.start(t0); osc.stop(t0 + dur + 0.03);
   }
-  // 四种音 —— ⚠️ 参数是牛牛在 `音效试听.html` 里听过之后定稿的，别随手改
+  // 八种音 —— ⚠️ 参数是牛牛在 `音效试听.html` 里听过之后定稿的，别随手改
   var SFX = {
     ok:     function () { sfxBlip('triangle', 698, 880, 0.08, 1.00); },          // 成功：操作生效了
     block:  function () { sfxBlip('triangle', 220, 220, 0.13, 1.15); },          // 被阻止：没做成的提示
     danger: function () { sfxBlip('sine', 165, 165, 0.20, 1.30); },              // 危险确认：红色弹窗弹出
     // 导出完成：两声（各 90ms、间隔 70ms）
-    done:   function () { sfxBlip('triangle', 880, 880, 0.09, 1.00); sfxBlip('triangle', 1046, 1046, 0.09, 1.00, 0.16); }
+    done:   function () { sfxBlip('triangle', 880, 880, 0.09, 1.00); sfxBlip('triangle', 1046, 1046, 0.09, 1.00, 0.16); },
+    // ---- 以下 4 种 2026-10-16 新增 ----
+    del:    function () { sfxBlip('triangle', 392, 196, 0.07, 1.05); },          // 删除：短促下滑「啪」一下
+    undo:   function () { sfxBlip('triangle', 660, 440, 0.11, 1.00); },          // 撤销：下滑「回撤」
+    // 导入完成：上行三连（各 70ms、间隔 55ms）
+    imp:    function () { sfxBlip('triangle', 523, 523, 0.07, 1.00, 0);
+                          sfxBlip('triangle', 659, 659, 0.07, 1.00, 0.125);
+                          sfxBlip('triangle', 784, 784, 0.07, 1.00, 0.25); },
+    theme:  function () { sfxBlip('triangle', 587, 587, 0.055, 0.60); }          // 切换主题：极轻的一下
   };
   // kind 省略时按消息内容自动判断；force=true 用于"关掉音效"那一下（否则关了就不响了，按了像没反应）
   function sfx(kind, force) {
@@ -979,11 +988,15 @@
     var f = SFX[kind]; if (!f) return;
     try { f(); } catch (e) {}          // 音频出任何问题都绝不影响主流程
   }
-  // 提示条该配哪种音。默认「成功」；「没做成」那类配「被阻止」；两个导出单独配「导出完成」。
-  //   ⚠️ 只看**开头几个字** → 文案小改不用动这里。句式变了 / 判断错了，就在调用处传第 3 个参数覆盖。
+  // 提示条该配哪种音。默认「成功」；「没做成」那类配「被阻止」；其余按**开头几个字**认。
+  //   ⚠️ 只看开头 → 文案小改不用动这里。句式变了 / 判断错了，就在调用处传第 3 个参数覆盖
+  //      （例：切换主题走 `toast(msg, null, 'theme')` —— 它的文字和"普通成功"分不开）。
   var SFX_BLOCK_RE = /^(还没|没有|没找到|先填|「|勾选的|选中的|这些文件|这个文件|名单库本来|已存在|这条数据|这里)/;
   function sfxKindOf(msg) {
     if (/^已导出/.test(msg)) return 'done';
+    if (/^已删除/.test(msg)) return 'del';        // 删除数据 / 删除全部已完成 / 删除设备 / 删群名
+    if (/^已撤销/.test(msg)) return 'undo';       // 撤销删除 / 撤销恢复
+    if (/^导入完成/.test(msg)) return 'imp';
     if (SFX_BLOCK_RE.test(msg)) return 'block';
     return 'ok';
   }
@@ -2768,14 +2781,18 @@
   //   · 点一项 → 主区把该群**所有设备**的数据合成**一张表**（牛牛：表头只有一个）
   //     ⚠️ 点它会**自动全选整群**（2026-10-13 第三轮改口；再点同一个群则什么都不变，见 setGroupScope）
   //   · 群组顺序 = **创建顺序**（第一次被填写的先后，见上方 grpOrderList()）
-  // 群名 → { total, undone, devs: {设备: 人数} }（跨设备聚合）
+  // 群名 → { total, undone, devs: {设备: 条数}, last }（跨设备聚合）
+  //   last = 该群里**最后一条完成**的时间戳（已完成行的 max doneAt）—— 只给侧栏「已完成群组」排序用。
+  //   ⚠️ 取 **max** 而不是 min：和导出归档（archivePlanOf 里的 last）**同一口径**，两处不能各说各话。
+  //   ⚠️ doneAt 是 2026-10-14 才加的字段 → 更早完成的老数据没有 → 当 0（= 最早，沉到最下面）。
   function groupIndex() {
     var m = {};
     rows.forEach(function (r) {
       if (!r.group) return;
-      var g = m[r.group] || (m[r.group] = { total: 0, undone: 0, devs: {} });
+      var g = m[r.group] || (m[r.group] = { total: 0, undone: 0, devs: {}, last: 0 });
       g.total++;
       if (r.status !== 'done') g.undone++;
+      else if ((r.doneAt || 0) > g.last) g.last = r.doneAt || 0;   // 只数已完成的行
       g.devs[r.device] = (g.devs[r.device] || 0) + 1;
     });
     return m;
@@ -2792,12 +2809,20 @@
   // 侧栏「群组列表」整段。
   //   · 没有任何群名 → **整段返回空串**（侧栏布局纹丝不动）
   //   · 整个群都完成的收进「已完成群组 (N)」小节（`undone === 0` 判定），**默认折叠、手动展开/收起**
+  //   · ⚠️ 两段排序**不一样**：进行中 = **创建顺序**；已完成 = **最近完成的排最上面**（2026-10-16 牛牛定）
   function sidebarGrpHtml() {
     var m = groupIndex();
     var names = grpOrderList();
     if (!names.length) return '';
     var live = [], fin = [];
     names.forEach(function (g) { (m[g].undone > 0 ? live : fin).push(g); });
+    // ⚠️ 已完成按「该群最后一条完成的时间」倒序（= max doneAt，与导出归档同口径，见 groupIndex 的 last）。
+    //   · ⚠️ 一次导出给整批打的是**同一个时间戳** → 并列是常态 → **只能靠稳定排序**保留上面的
+    //     「创建顺序」当次序。所以这里**绝不能再写会打乱并列的次级比较**（比如再按群名排）。
+    //     （Array.sort 在现代 V8 / Chromium 里是稳定的，项目里别处也依赖这一点。）
+    //   · 没有 doneAt 的老数据当 0 → 自然沉到最下面。
+    //   · 进行中那一段（live）**保持创建顺序不动**。
+    fin.sort(function (a, b) { return (m[b].last || 0) - (m[a].last || 0); });
     // ⚠️ 2026-10-13：原来这里有一条 <div class="side-hr"> 分割线，牛牛要求
     //   「设备列表和群组列表要在一个区域里」—— 已删除，两栏直接相邻、同属一个视觉区域。
     var h = '<div class="side-title' + (grpListCollapsed ? '' : ' open') + '" data-act="toggleGrpList"' +
@@ -3575,7 +3600,10 @@
       rows = rows.filter(function (r) { return r.k !== rk; });
       delete selected[rk];
       save(); render();
+      // ⚠️ 行内垃圾桶是**静默**的（不弹提示条）→ 没地方挂音，这里**直接补一声「删除」**。
+      //    删到「已完成」时会弹提示条，而提示条自己就会按 `^已删除` 配同一个音 → 那种情况不重复响。
       if (wasDone) toast('已删除。⚠️ 这条的ID没留存，下次导入还会进来');
+      else sfx('del');
     }
     else if (act === 'delSel') {
       // 表头垃圾桶 = **删除选中**（牛牛 2026-10-13 改）：
