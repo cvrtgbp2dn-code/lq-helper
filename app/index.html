@@ -128,14 +128,30 @@
              display: flex; flex-direction: column; padding: 16px 12px 12px; }
   .side-head { flex-shrink: 0; position: relative; padding: 0 8px 14px; border-bottom: 1px solid var(--line); margin-bottom: 10px; text-align: center; }
   .side-head h1 { font-size: 16px; font-weight: 700; letter-spacing: .3px; text-align: center; }
-  /* 亮色/暗色切换（2026-10-15）：侧栏标题右边一个小图标。
-     ⚠️ 用**绝对定位** → 侧栏收起成 64px 窄条时它也不会被「文字隐形」那一套规则藏掉
-     （它**不在** `.sidebar:not(.expand) ... { visibility:hidden }` 那个选择器列表里）。 */
-  .theme-tg { position: absolute; top: -2px; right: 2px; width: 26px; height: 26px; border: none; background: none;
-              color: var(--muted); cursor: pointer; border-radius: 7px; padding: 0;
-              display: inline-flex; align-items: center; justify-content: center; transition: .15s; }
-  .theme-tg:hover { color: var(--brand); background: var(--hover); }
-  .theme-tg svg { display: block; }
+  /* 侧栏标题右边的两个小图标（2026-10-15）：音量开关 + 亮/暗切换。
+     ⚠️ 用**绝对定位** → 侧栏收起成 64px 窄条时它们也不会被「文字隐形」那一套规则藏掉
+     （它们**不在** `.sidebar:not(.expand) ... { visibility:hidden }` 那个选择器列表里）。
+     ⚠️ `.theme-tg` 这个类名**必须保留**（测试和别处按它找主题按钮）—— 它现在只是 `.hd-tg` 的别名。 */
+  .hd-tools { position: absolute; top: -2px; right: 2px; display: flex; gap: 3px; }
+  .hd-tg { width: 26px; height: 26px; border: none; background: none;
+           color: var(--muted); cursor: pointer; border-radius: 7px; padding: 0;
+           display: inline-flex; align-items: center; justify-content: center; transition: color .15s; }
+  .hd-tg:hover { color: var(--brand); background: var(--hover); }
+  .hd-tg svg { display: block; }
+  /* 音效关掉时图标变红 —— 一眼看出声音是关着的，不用去点它试 */
+  .hd-tg.off, .hd-tg.off:hover { color: var(--red); }
+  /* ⚠️ 收起态：头部右边**只容得下一个**图标（旁边还有「拉」徽标，位置早定死了 → 实测两个图标一定压上去）。
+     所以窄条里**只留亮/暗切换**（暗色下"怎么切回去"必须摸得到），音效开关先收起来。
+     ⚠️ 不会丢功能：侧栏本来就是**悬停自动展开**的，鼠标移上去就能点它。
+     ⚠️ 这里只缩/藏这两个**绝对定位**的图标，**绝不碰任何盒模型** ——
+        侧栏条目在收起/展开两态必须逐像素一致，否则悬停展开时点击会落错按钮（见上面 .sidebar.expand 那段）。 */
+  .sidebar:not(.expand) .hd-tools { right: 2px; gap: 0; }
+  .sidebar:not(.expand) .hd-tools .hd-tg:not(.theme-tg) { display: none; }
+  .sidebar:not(.expand) .theme-tg { width: 26px; height: 26px; }
+  .sidebar:not(.expand) .theme-tg svg { width: 15px; height: 15px; }
+  /* 版本号（2026-10-15 牛牛选的「侧栏标题下方」）：标题底下一行小灰字，不抢视线但随时能瞄一眼 */
+  .hd-ver { margin-top: 5px; font-size: 10.5px; line-height: 1.25; color: var(--muted);
+            opacity: .7; letter-spacing: .2px; font-variant-numeric: tabular-nums; }
   /* 设备列表区：**不再吃满剩余空间**（原来是 flex:1）——
      牛牛要求群组列表「贴在设备列表的下方」，吃满的话它会被顶到底部去。
      现在按内容高走（flex:0 1 auto），太长时才收缩 + 内部滚。
@@ -725,6 +741,7 @@
      （真机上点设备图标，实测打到了「仪表盘」）。隐形后条目盒子与展开态逐像素一致，
      多出来的部分交给 .sidebar 的 overflow:hidden 裁掉 —— 悬停展开时鼠标底下的东西**一点不动**。 */
   .sidebar .side-head h1,
+  .sidebar .hd-ver,
   .sidebar .side-act span,
   .sidebar .side-title span,
   .sidebar .dt-caret,
@@ -733,6 +750,7 @@
   .sidebar .grp-item .nm,
   .sidebar .side-pin span { opacity: 1; visibility: visible; transition: opacity .2s ease-out; }
   .sidebar:not(.expand) .side-head h1,
+  .sidebar:not(.expand) .hd-ver,
   .sidebar:not(.expand) .side-act span,
   .sidebar:not(.expand) .side-title span,
   .sidebar:not(.expand) .dt-caret,
@@ -792,6 +810,11 @@
 <script>
 (function () {
   'use strict';
+  // ⚠️⚠️ 版本号（2026-10-15 新增）：显示在侧栏标题下方 `.hd-ver`。
+  //   纯本地单文件没法自己读到版本 → **只能写死在这里**，所以**每次发版必须手动同步这一行**。
+  //   ⚠️ 漏改不会报错、只会显示旧版号 → 测试套件里有一条「APP_VER 必须等于 桌面版/app/version.json 的 version」
+  //      专门盯它（见 测试_音效.js），别绕过。
+  var APP_VER = '2026.10.15.4';
   var LS_KEY = 'lq_helper_rows_v2';
   var LS_DEV = 'lq_helper_dev_order_v2';
   var LS_MAN = 'lq_helper_dev_manual_v2';
@@ -905,9 +928,68 @@
     applyTheme(); saveUI(); render();
     toast(THEME === 'dark' ? '已切到暗色模式' : '已切回亮色模式');
   }
+  // ---------- 音效（2026-10-15 新增，牛牛选的「乙档」4 种音）----------
+  //   ⚠️ 零依赖：**不引入任何音频文件**，全部用 Web Audio **现场合成**
+  //      （三角波/正弦 + 极快起音 + 指数衰减 → 像 UI 提示音，不像报警器）。
+  //   ⚠️⚠️ 浏览器自动播放策略：AudioContext 必须**用户第一次交互之后**才允许出声 →
+  //      首次调用时 resume()。音效本来就是"点击的结果"，所以用户无感。
+  //   ⚠️ 音量**故意很低**（峰值 ≈ 0.15）：音效只是轻提示，不做成报警器（「简洁·干净」是核心审美）。
+  //   ⚠️ 开关状态存在现有 LS_UI（_ui_v2）里，**不新增键名**；默认**开**（牛牛定）。
+  var SOUND = true;
+  var SFX_HEADROOM = 0.18;      // 总衰减：让「成功」的峰值落在 ≈ 0.15
+  var SFX_VOL = 0.85;           // 音量（暂不做 UI，固定 85%）
+  var _ac = null, _acMaster = null;
+  function audioCtx() {
+    if (!_ac) {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) { SOUND = false; return null; }        // 老浏览器没有 Web Audio → 静默降级，不报错
+      try { _ac = new Ctx(); } catch (e) { SOUND = false; return null; }
+      _acMaster = _ac.createGain();
+      _acMaster.gain.value = SFX_HEADROOM * SFX_VOL;
+      _acMaster.connect(_ac.destination);
+    }
+    if (_ac.state === 'suspended') { try { _ac.resume(); } catch (e) {} }
+    return _ac;
+  }
+  // 单个音：波形 / 起频 / 止频 / 时长(秒) / 相对音量 / 延迟(秒)
+  function sfxBlip(type, f0, f1, dur, lv, delay) {
+    var a = audioCtx(); if (!a) return;
+    var t0 = a.currentTime + (delay || 0);
+    var osc = a.createOscillator(), g = a.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f0, t0);
+    if (f1 && f1 !== f0) osc.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(lv, t0 + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g); g.connect(_acMaster);
+    osc.start(t0); osc.stop(t0 + dur + 0.03);
+  }
+  // 四种音 —— ⚠️ 参数是牛牛在 `音效试听.html` 里听过之后定稿的，别随手改
+  var SFX = {
+    ok:     function () { sfxBlip('triangle', 698, 880, 0.08, 1.00); },          // 成功：操作生效了
+    block:  function () { sfxBlip('triangle', 220, 220, 0.13, 1.15); },          // 被阻止：没做成的提示
+    danger: function () { sfxBlip('sine', 165, 165, 0.20, 1.30); },              // 危险确认：红色弹窗弹出
+    // 导出完成：两声（各 90ms、间隔 70ms）
+    done:   function () { sfxBlip('triangle', 880, 880, 0.09, 1.00); sfxBlip('triangle', 1046, 1046, 0.09, 1.00, 0.16); }
+  };
+  // kind 省略时按消息内容自动判断；force=true 用于"关掉音效"那一下（否则关了就不响了，按了像没反应）
+  function sfx(kind, force) {
+    if (!SOUND && !force) return;
+    var f = SFX[kind]; if (!f) return;
+    try { f(); } catch (e) {}          // 音频出任何问题都绝不影响主流程
+  }
+  // 提示条该配哪种音。默认「成功」；「没做成」那类配「被阻止」；两个导出单独配「导出完成」。
+  //   ⚠️ 只看**开头几个字** → 文案小改不用动这里。句式变了 / 判断错了，就在调用处传第 3 个参数覆盖。
+  var SFX_BLOCK_RE = /^(还没|没有|没找到|先填|「|勾选的|选中的|这些文件|这个文件|名单库本来|已存在|这条数据|这里)/;
+  function sfxKindOf(msg) {
+    if (/^已导出/.test(msg)) return 'done';
+    if (SFX_BLOCK_RE.test(msg)) return 'block';
+    return 'ok';
+  }
   // 只把 UI 状态这一个键（体积小）—— 供输入框实时保存使用，避免为了记一个数字把几千条 rows 重新序列化
   function saveUI() {
-    try { localStorage.setItem(LS_UI, JSON.stringify({ doneCollapsed: doneCollapsed, devListCollapsed: devListCollapsed, sidebarPinned: sidebarPinned, theme: THEME })); } catch (e) {}
+    try { localStorage.setItem(LS_UI, JSON.stringify({ doneCollapsed: doneCollapsed, devListCollapsed: devListCollapsed, sidebarPinned: sidebarPinned, theme: THEME, sound: SOUND })); } catch (e) {}
   }
   // 群组创建顺序单独存一个键 —— 它很小，且和 rows 的写入时机不完全一样（改群名并不改数据）
   function saveGrpOrder() { try { localStorage.setItem(LS_GRP, JSON.stringify(grpOrder)); } catch (e) {} }
@@ -964,7 +1046,7 @@
       var dm = localStorage.getItem(LS_MAN);
       if (dm) devManual = JSON.parse(dm) || {};
       var ui = localStorage.getItem(LS_UI);
-      if (ui) { var u = JSON.parse(ui) || {}; doneCollapsed = u.doneCollapsed || {}; devListCollapsed = !!u.devListCollapsed; sidebarPinned = !!u.sidebarPinned; THEME = (u.theme === 'dark') ? 'dark' : 'light'; }
+      if (ui) { var u = JSON.parse(ui) || {}; doneCollapsed = u.doneCollapsed || {}; devListCollapsed = !!u.devListCollapsed; sidebarPinned = !!u.sidebarPinned; THEME = (u.theme === 'dark') ? 'dark' : 'light'; SOUND = (u.sound !== false); }
       var go = localStorage.getItem(LS_GRP);
       if (go) { var gg = JSON.parse(go); if (Object.prototype.toString.call(gg) === '[object Array]') grpOrder = gg.filter(function (x) { return typeof x === 'string'; }); }
       var us = localStorage.getItem(LS_USED);
@@ -1038,7 +1120,8 @@
     var b = $('toastUndo');
     if (b) { b.hidden = true; b.onclick = null; }
   }
-  function toast(msg, undoFn) {
+  function toast(msg, undoFn, kind) {
+    sfx(kind || sfxKindOf(msg));      // 音效（2026-10-15）：按消息类型配音；kind 可显式覆盖（'ok'/'block'/'done'）
     clearTimeout(toastTimer); toastTimer = null;
     $('toastMsg').textContent = msg;
     var b = $('toastUndo');
@@ -1091,6 +1174,9 @@
     modalHasOk = !opt.noOk;
     modalAllowEmpty = !!opt.allowEmpty;
     $('modalMask').classList.add('show');
+    // 音效（2026-10-15）：**红色确认窗**弹出时配一声低音 —— 提醒"这一步是真删/会覆盖，看清楚再点"。
+    //   ⚠️ 只认 okRed（红色主按钮），不是所有弹窗都响。导出确认框在有归档时也是 okRed → 同样会响，符合预期。
+    if (opt.okRed) sfx('danger');
     var inp = $('modalInput');
     if (inp) { inp.focus(); if (inp.select) { try { inp.select(); } catch (e) {} } }
   }
@@ -2273,7 +2359,7 @@
     refreshSelectionUI();
     if (box) { box.value = '0'; box.classList.remove('dirty'); }
     if (had) toast('已取消选中 ' + had + ' 条');
-    else toast('现在一条都没勾选');
+    else toast('现在一条都没勾选', null, 'block');
   }
   // 只刷新与选中相关的界面（勾选数 + 行勾选框 + 表头全选框/半选态），不重绘整个列表
   function refreshSelectionUI() {
@@ -2362,10 +2448,17 @@
       counts[r.device] = (counts[r.device] || 0) + 1;
       if (r.status === 'pending' || r.status === 'launched' || outOfLib(r)) devAlert[r.device] = true;
     });
-    // 标题右边一个亮/暗切换小图标（2026-10-15）。图标跟着当前主题走：亮色时显示月亮（点了变暗）、暗色时显示太阳。
+    // 标题右边两个小图标（2026-10-15）：音效开关 + 亮/暗切换。两个都跟着当前状态换图标。
+    // 标题**下面**一行是版本号（牛牛选的「侧栏标题下方」）—— ⚠️ 纯本地单文件读不到版本，靠 JS 里的 APP_VER 写死。
     var sb = '<div class="side-head"><h1>拉群小助手</h1>' +
-      '<button class="theme-tg" data-act="toggleTheme" title="' + (isDark() ? '切到亮色模式' : '切到暗色模式') + '">' +
-      (isDark() ? ICON.sun : ICON.moon) + '</button></div>';
+      '<div class="hd-tools">' +
+      '<button class="hd-tg' + (SOUND ? '' : ' off') + '" data-act="toggleSound" title="' +
+      (SOUND ? '音效已开 —— 点一下关掉' : '音效已关 —— 点一下打开') + '">' +
+      (SOUND ? ICON.soundOn : ICON.soundOff) + '</button>' +
+      '<button class="hd-tg theme-tg" data-act="toggleTheme" title="' + (isDark() ? '切到亮色模式' : '切到暗色模式') + '">' +
+      (isDark() ? ICON.sun : ICON.moon) + '</button>' +
+      '</div>' +
+      '<div class="hd-ver" title="当前版本">v' + APP_VER + '</div></div>';
     sb += '<div class="side-list">';
     // ① 仪表盘（放在设备列表**上面**，单独一项）
     //   ⚠️ 图标平时灰、**激活时才上该项目的色**（--ac）—— 全侧栏统一这套规则
@@ -2470,6 +2563,9 @@
     // 亮色/暗色切换（2026-10-15）：月亮 = 当前亮色、点了变暗；太阳 = 当前暗色、点了变亮
     moon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
     sun: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    // 音效开关（2026-10-15）：喇叭 = 开着、喇叭带叉 = 关着（关着时按钮还会变红，见 .hd-tg.off）
+    soundOn: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.6 8.6a5 5 0 0 1 0 6.8"/><path d="M18.7 5.5a9 9 0 0 1 0 13"/></svg>',
+    soundOff: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><line x1="22" y1="9.5" x2="16.5" y2="15"/><line x1="16.5" y1="9.5" x2="22" y2="15"/></svg>',
     grid: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></svg>',
     // 「单设备」条目图标：**14px**（2026-10-13 牛牛："条目左边的图标调到比标题图标小一档"）。
     //   ⚠️ 侧栏的层级靠三件事一起表达：分组头 14px 字号 + 16px 图标；条目 13px 字号 + 14px 图标 + 左缩进 12px。
@@ -2971,7 +3067,7 @@
       if (!val || val === row.id) return;
       var dup = false;
       rows.forEach(function (x) { if (x !== row && x.id === val) dup = true; });
-      if (dup) { toast('数据ID「' + val + '」已经有了，没改'); return; }
+      if (dup) { toast('数据ID「' + val + '」已经有了，没改', null, 'block'); return; }
       row.id = val;
     }
   }
@@ -3353,6 +3449,12 @@
     if (act === 'openImport') { pendingFiles = []; mainView = 'import'; render(); return; }
     // 侧栏标题右边的亮/暗切换（2026-10-15）
     if (act === 'toggleTheme') { setTheme(isDark() ? 'light' : 'dark'); return; }
+    // 音效开关（2026-10-15）。⚠️ 关掉时也要响一声（否则按了像没反应）→ 传 force 绕过刚翻过去的开关。
+    if (act === 'toggleSound') {
+      SOUND = !SOUND;
+      sfx(SOUND ? 'ok' : 'block', true);
+      saveUI(); render(); return;
+    }
     // ---- 导入页：移除单个文件 / 取消全部 / 确定导入 ----
     if (act === 'impRemove') { pendingFiles.splice(+t.getAttribute('data-i'), 1); render(); return; }
     if (act === 'impClear') { pendingFiles = []; render(); toast('已清空待导入列表'); return; }
