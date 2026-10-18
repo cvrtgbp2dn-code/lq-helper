@@ -814,7 +814,7 @@
   //   纯本地单文件没法自己读到版本 → **只能写死在这里**，所以**每次发版必须手动同步这一行**。
   //   ⚠️ 漏改不会报错、只会显示旧版号 → 测试套件里有一条「APP_VER 必须等于 桌面版/app/version.json 的 version」
   //      专门盯它（见 测试_音效.js），别绕过。
-  var APP_VER = '2026.10.15.5';
+  var APP_VER = '2026.10.19.1';
   var LS_KEY = 'lq_helper_rows_v2';
   var LS_DEV = 'lq_helper_dev_order_v2';
   var LS_MAN = 'lq_helper_dev_manual_v2';
@@ -1770,6 +1770,21 @@
     var d = new Date();
     return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '_' + pad(d.getHours()) + pad(d.getMinutes());
   }
+  // ⚠️ 2026-10-19 牛牛定稿：导出交单表格的文件名 =「半夏已拉_月日_N」
+  //    例：半夏已拉_1019_3.xlsx
+  //    · 前缀是「半夏已拉」（**不是**「已拉群」）
+  //    · 月日**连写四位**（10月19日→1019，10月1日→1001），不带「月/日」、不带时间
+  //    · 结尾的 N = 这批里有几个不重复的群，**不带「个群」两个字**
+  function mdStamp() {
+    var d = new Date();
+    return pad(d.getMonth() + 1) + pad(d.getDate());
+  }
+  // 「N 个群」= 这批数据里**不重复的群名个数**（已拉群的数据一定都有群名）
+  function grpCount(list) {
+    var s = {};
+    list.forEach(function (r) { if (r.group) s[r.group] = 1; });
+    return Object.keys(s).length;
+  }
   // ⚠️ 2026-10-15 牛牛要求：**导出后自动归档**（每台设备只保留最近 2 个「已完成」群组）——
   //   把「已完成」**先按设备分桶**，桶内再按**群组**分组 → 按每组**最晚的完成时间**倒序 →
   //   每台设备只留前 2 个群组，其余的**从 rows 里移走**；
@@ -1877,7 +1892,7 @@
   }
   function doExport(targets) {
     var blob = zipStore(buildXlsxParts(targets, { kind: 'launched' }));      // 真 .xlsx（OOXML）
-    downloadBlob(blob, '已拉群_' + stamp() + '.xlsx');
+    downloadBlob(blob, '半夏已拉_' + mdStamp() + '_' + grpCount(targets) + '.xlsx');
     // ⚠️ 一起盖「完成时间」戳 doneAt（牛牛选的方案 F2）：
     //    同一个批次用**同一个时间戳**，已完成区就能按"交单先后"倒序排 —— 同一次交单的算同一批。
     var t = Date.now();
