@@ -140,15 +140,13 @@
   .hd-tg svg { display: block; }
   /* 音效关掉时图标变红 —— 一眼看出声音是关着的，不用去点它试 */
   .hd-tg.off, .hd-tg.off:hover { color: var(--red); }
-  /* ⚠️ 收起态：头部右边**只容得下一个**图标（旁边还有「拉」徽标，位置早定死了 → 实测两个图标一定压上去）。
-     所以窄条里**只留亮/暗切换**（暗色下"怎么切回去"必须摸得到），音效开关先收起来。
-     ⚠️ 不会丢功能：侧栏本来就是**悬停自动展开**的，鼠标移上去就能点它。
-     ⚠️ 这里只缩/藏这两个**绝对定位**的图标，**绝不碰任何盒模型** ——
+  /* ⚠️ 收起态：头部右边**横排放不下这两个图标** —— 旁边还有品牌徽标（位置早定死），实测一定压上去。
+     2026-10-31 牛牛定稿（和 FanHub 同一条规则）：**两个图标在收起时一律隐藏**，窄条里只留品牌徽标。
+     ⚠️ 别改回"只留亮/暗切换"：那版会让月亮/太阳压在徽标右上角（改完徽标后特别明显）。
+     ⚠️ 不会丢功能：侧栏本来就是**悬停自动展开**的，鼠标一上去两个图标就都回来。
+     ⚠️ 这里只隐藏这两个**绝对定位**的图标，**绝不碰任何盒模型** ——
         侧栏条目在收起/展开两态必须逐像素一致，否则悬停展开时点击会落错按钮（见上面 .sidebar.expand 那段）。 */
-  .sidebar:not(.expand) .hd-tools { right: 2px; gap: 0; }
-  .sidebar:not(.expand) .hd-tools .hd-tg:not(.theme-tg) { display: none; }
-  .sidebar:not(.expand) .theme-tg { width: 26px; height: 26px; }
-  .sidebar:not(.expand) .theme-tg svg { width: 15px; height: 15px; }
+  .sidebar:not(.expand) .hd-tools { display: none; }
   /* 版本号（2026-10-15 牛牛选的「侧栏标题下方」）：标题底下一行小灰字，不抢视线但随时能瞄一眼 */
   .hd-ver { margin-top: 5px; font-size: 10.5px; line-height: 1.25; color: var(--muted);
             opacity: .7; letter-spacing: .2px; font-variant-numeric: tabular-nums; }
@@ -771,9 +769,16 @@
   .sidebar:not(.expand) .grp-sub { display: none; }
   /* 收起时的品牌标：绝对定位贴左（不参与布局） */
   .sidebar .side-head { position: relative; }
-  .sidebar:not(.expand) .side-head::before { content: '拉'; position: absolute; left: 8px; top: 0;
-      display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px;
-      background: var(--vl-from); color: #fff; font-size: 14px; font-weight: 700; }
+  /* ⚠️ 2026-10-31 牛牛：收起时那个方块要**用我们的新图标**（圆+心），不是字母「拉」。
+     做法和 FanHub 的徽标一致：保留纯色圆角底，图形换成**白色图标字形**（内联 SVG 数据 URL，零外部文件、断网也能显示）。
+     ⚠️ 这版图标是「正圆铺满 1200 画布」，所以 background-size 62% 就直接是图形占比 62%
+        （不像「粉」字那样还要按墨迹 bbox 换算）。
+     ⚠️ 底色用 --brand（亮 #3b6ef0 / 暗 #5b8cff），和图标本身的蓝一致；圆角 7px ≈ 图标的 112/512。 */
+  .sidebar:not(.expand) .side-head::before { content: ''; position: absolute; left: 8px; top: 0;
+      width: 30px; height: 30px; border-radius: 7px;
+      background-color: var(--brand);
+      background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 1200'%3E%3Cpath d='M600 0C268.629 0 0 268.629 0 600s268.629 600 600 600s600-268.629 600-600S931.371 0 600 0m132.789 343.503c71.295-1.114 135.772 37.646 166.337 103.724c28.273 87.356 4.612 176.225-45.251 243.199c-32.912 45.417-72.247 84.584-112.462 118.807c-36.997 34.439-119.808 102.591-141.755 104.483c-19.397-3.708-41.173-25.678-56.573-36.968c-86.534-65.781-179.667-145.742-226.899-233.207c-39.601-83.97-39.673-187.864 21.96-252.241c79.917-72.048 200.39-57.946 261.512 17.325c16.415-21.295 36.605-38.066 60.562-50.267c24.279-9.69 48.803-14.483 72.569-14.855' fill='%23fff'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: center; background-size: 62% 62%; }
   /* 底部「保持展开」固定键：固定后箭头翻转 180°（原版同款）。
      ⚠️ 2026-10-13 牛牛：它挪到了**底栏第一项**（「导入粉丝」上方），并**下面补一条分割线**
         —— 原来它紧贴群组列表，跟「已完成群组」分不清。 */
@@ -817,7 +822,7 @@
   //   纯本地单文件没法自己读到版本 → **只能写死在这里**，所以**每次发版必须手动同步这一行**。
   //   ⚠️ 漏改不会报错、只会显示旧版号 → 测试套件里有一条「APP_VER 必须等于 桌面版/app/version.json 的 version」
   //      专门盯它（见 测试_音效.js），别绕过。
-  var APP_VER = '2026.10.31.1';
+  var APP_VER = '2026.10.31.2';
   var LS_KEY = 'lq_helper_rows_v2';
   var LS_DEV = 'lq_helper_dev_order_v2';
   var LS_MAN = 'lq_helper_dev_manual_v2';
