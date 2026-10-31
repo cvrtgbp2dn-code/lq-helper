@@ -568,22 +568,21 @@
                      真正要点的搜索框自己再开 pointer-events:auto（见 .vform）。 */
                   pointer-events: none; }
 
-  /* ---- 背景：星空（velora Shooting Stars）----
-     2026-10-31 牛牛要求换成 velora 的 Shooting Stars，**换掉原来的等距网格**。
-     照原版组件手写成原生 canvas（零依赖、无构建），参数用它的默认值：
-       density 5 颗/万像素² · delay 2400ms(±60%) · speed 900px/s(±30°) · angle 25°(±12°) · length 150px
-     颜色照原版 demo 的 `text-brand-from dark:text-white`：
-       · 星点    = 亮色 var(--brand-from) / 暗色 #fff（下面 .dash-bg 的 color，暗色块再覆盖）
-       · 流星尾迹 = var(--brand-to)（原版 ShootingStars 的 color 默认值）
-     底层渐变 = 原版 demo 的 `bg-gradient-to-b from-background to-brand-from/10`：
-       顶部就是页面底色，底部叠一层 10% 品牌色。
-     ⚠️ 网格那套（.dash-grid / .dash-cell 的 hover 亮格）已整体删除。 */
+  /* ---- 背景：等距网格（Background Boxes）---- */
+  /* 外框：铺满主区 + 上下渐隐 —— 照 velora demo 那层 mask（顶/底 25% 淡出） */
   .dash-bg { position: absolute; inset: 0; overflow: hidden;
              --brand-from: #175dfc; --brand-via: #3180ff; --brand-to: #00a6ee;
-             color: var(--brand-from);                 /* ← 星点色（亮色） */
-             background: linear-gradient(to bottom, transparent, color-mix(in oklab, var(--brand-from) 10%, transparent)); }
-  html[data-theme="dark"] .dash-bg { color: #fff; }   /* ← 星点色（暗色），照原版 dark:text-white */
-  .dash-bg canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+             -webkit-mask-image: linear-gradient(to bottom, transparent, #000 25%, #000 75%, transparent);
+                     mask-image: linear-gradient(to bottom, transparent, #000 25%, #000 75%, transparent); }
+  /* 网格本体：居中 + **纵向压扁 58% + 逆时针转 45°** = 那个斜着的等距视角（原版一模一样） */
+  .dash-grid { position: absolute; top: 50%; left: 50%; display: grid;
+               border-top: 1px solid var(--vl-line); border-left: 1px solid var(--vl-line);
+               transform: translate(-50%, -50%) scaleY(.58) rotate(-45deg); }
+  /* 单个格子：平时只有「右 + 下」两条细线；指针划过 → **立刻**亮成随机品牌色，移开后 1.4s 慢慢褪回。
+     ⚠️ hover 里那句 transition-duration:0s 是关键：进 = 瞬时，出 = 1.4s（原版就是这个手感）。 */
+  .dash-cell { border-right: 1px solid var(--vl-line); border-bottom: 1px solid var(--vl-line);
+               transition: background-color 1400ms ease-out; }
+  .dash-cell:hover { background: var(--tint); transition-duration: 0s; }
 
   /* ---- 搜索框：Vanish Input（胶囊形 + 右侧圆形箭头按钮）----
      ⚠️ 牛牛 2026-10-13 明确要「连外形一起换」，所以这里**推翻**了 2026-10-12 那句
@@ -822,7 +821,7 @@
   //   纯本地单文件没法自己读到版本 → **只能写死在这里**，所以**每次发版必须手动同步这一行**。
   //   ⚠️ 漏改不会报错、只会显示旧版号 → 测试套件里有一条「APP_VER 必须等于 桌面版/app/version.json 的 version」
   //      专门盯它（见 测试_音效.js），别绕过。
-  var APP_VER = '2026.10.31.2';
+  var APP_VER = '2026.10.31.3';
   var LS_KEY = 'lq_helper_rows_v2';
   var LS_DEV = 'lq_helper_dev_order_v2';
   var LS_MAN = 'lq_helper_dev_manual_v2';
@@ -2603,7 +2602,7 @@
     // 离开数据表（去导入/导出/库管理等整页）就把搜索定位框清掉，别把旧词带过去
     if (mainView !== 'data') { locateQ = ''; locateIdx = 0; }
     // 同理：离开仪表盘就把大搜索框清掉，并**停掉 placeholder 轮播的定时器**
-    if (mainView !== 'dash') { dashQ = ''; dashIdx = 0; dvStop(); starStop(); }
+    if (mainView !== 'dash') { dashQ = ''; dashIdx = 0; dvStop(); }
     // 统计数字现在由 viewBarHtml() 里的 vbStatsHtml() 直接渲染成 HTML（按当前视图算），
     // 不再在这里单独赋值 —— 元素在 main 里，赋值必须等到 innerHTML 之后才行。
 
@@ -3978,8 +3977,18 @@
     var dbox = $('dashList');
     if (dbox && !dbox.hidden && !hit('#dashWrap')) dashLocClose();   // 仪表盘的胶囊搜索
   });
-  // 窗口尺寸变了 → 星空背景重算画布尺寸即可（**不用重建 DOM**，重建会闪一下）。
-  // 监听器在星空引擎那边（starResize / window.resize），这里不用再挂。
+  // 窗口尺寸变了 → 仪表盘的背景网格要**重算**（格子数是照窗口算的，不改的话大屏四角会露出菱形的斜边）。
+  // 只重建背景那一层，不重绘整个仪表盘（否则输入框会丢焦点、输入内容会跳）。
+  var bgResizeTimer = null;
+  window.addEventListener('resize', function () {
+    if (mainView !== 'dash') return;
+    if (bgResizeTimer) clearTimeout(bgResizeTimer);
+    bgResizeTimer = setTimeout(function () {
+      var bg = $('dashBg');
+      if (!bg || mainView !== 'dash') return;
+      bg.innerHTML = bgGridHtml();
+    }, 200);
+  });
 
   document.addEventListener('dblclick', function (e) {
     if (e.target.closest('input,button,select')) return;
@@ -4237,152 +4246,41 @@
   // 色值照抄 velora 浅色主题原值。
   // ⚠️ 原 dashStats2 / popNumHtml / popGroupHtml / dashStatHtml / POP_GROUP_MAX 已随统计栏一起删除。
 
-  // ---- 背景：星空（velora Shooting Stars，2026-10-31 换掉等距网格）----
-  // ⚠️ 原版是 React + Tailwind 组件（`shadcn add` 装 .tsx），本项目是单文件零依赖 → **手写原生 canvas 版**。
-  //    本质就是「两层 canvas + requestAnimationFrame」，参数全用原版默认值：
-  //      density 5 颗/万像素² · delay 2400ms(±60%) · speed 900px/s(±30%) · angle 25°(±12°) · length 150px
-  //    颜色：星点 = .dash-bg 的 color（亮色 --brand-from / 暗色 #fff）；流星尾迹 = --brand-to。
-  // ⚠️ 原版默认 density = 5，但那是在**一个小卡片**里演示；铺满整页后按 5 算是 619 颗（1376×900），
-  //    牛牛 2026-10-31 看过实机效果说「有点密」→ 降到 3（约 371 颗，少 40%）。想再淡就继续往下调。
-  var STAR_DENSITY = 3;                                   // 每 10000 px² 几颗
-  var SHOOT_DELAY = 2400, SHOOT_SPEED = 900, SHOOT_ANGLE = 25, SHOOT_LEN = 150;
-  var starBox = null, starDots = null, starShoot = null;
-  var starRAF = null, starTimer = null, starLast = 0;
-  var starW = 0, starH = 0, starDPR = 1, STARS = [], SHOOT = null;
-
-  function starReduced() {
-    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
+  // ---- 背景：等距网格 ----
+  var BG_CELL = 48;                       // 格子边长（原版 cellSize = 48）
+  // 九种格子色 = 品牌三色 × 三档浓度，顺序和原版完全一致（85 → 65 → 45，每档 from / via / to）
+  var BG_TINTS = [85, 65, 45].reduce(function (acc, p) {
+    return acc.concat(['from', 'via', 'to'].map(function (v) {
+      return 'color-mix(in oklab, var(--brand-' + v + ') ' + p + '%, transparent)';
+    }));
+  }, []);
+  // 要多少格才能铺满？
+  // 网格是「转 45°、再纵向压扁 58%」的正方形，覆盖范围是个菱形；要让菱形四个角都盖住容器，
+  // 正方形边长 S 得满足 (W/2)·√2/S + (H/2)·√2/(0.58·S) ≤ 1  →  S ≥ 0.7071W + 1.219H
+  // ⚠️ 原版默认 32×32 放进小 demo 容器够用；**铺满整页就不够了**（四角会露出菱形的斜边），
+  //    所以这里按窗口实算，下限 32（原版）、上限 80 防止大屏上 DOM 爆炸。
+  function bgSide() {
+    // ⚠️ 2026-10-13：侧栏改成 rail（收起 64 / 悬停 232）→ **不能再写死 232**！
+    //    写死会在侧栏收起时少算 168px，网格盖不满、四角露出斜边（回归测试抓到过）。
+    //    直接量主区实际宽度最稳 —— 主区宽度**不随侧栏悬停变化**（展开走负 margin 覆盖，不挤压主区）。
+    var mainEl = document.getElementById('main');
+    var W = Math.max(320, mainEl ? mainEl.clientWidth : (window.innerWidth - 64));
+    var H = Math.max(320, window.innerHeight);         // 右主区高（仪表盘撑满一屏）
+    var need = 0.7071 * W + 1.219 * H + 2 * BG_CELL;   // 末尾 +2 格余量
+    return Math.max(32, Math.min(Math.ceil(need / BG_CELL), 80));
   }
-  function starCol(el) { return (getComputedStyle(el).color || '').trim() || '#175dfc'; }
-  function starAccent(el) {
-    var v = (getComputedStyle(el).getPropertyValue('--brand-to') || '').trim();
-    return v || '#00a6ee';
+  function bgGridHtml() {
+    var n = bgSide(), cells = '';
+    for (var i = 0; i < n * n; i++) cells += '<div class="dash-cell"></div>';
+    return '<div class="dash-grid" style="grid-template-columns:repeat(' + n + ',' + BG_CELL + 'px);' +
+           'grid-auto-rows:' + BG_CELL + 'px">' + cells + '</div>';
   }
-  // 星点：随机位置 + 随机半径/相位/呼吸速度；数量按 density 实算（1440×900 ≈ 65 颗）
-  function starSeed() {
-    var n = Math.max(24, Math.round(starW * starH / 10000 * STAR_DENSITY));
-    STARS = [];
-    for (var i = 0; i < n; i++) {
-      STARS.push({
-        x: Math.random() * starW, y: Math.random() * starH,
-        r: 0.5 + Math.random() * 0.9,
-        p: Math.random() * Math.PI * 2,
-        s: 0.6 + Math.random() * 1.2
-      });
-    }
+  // 指针划过哪一格，就给哪一格换一个**随机**色（原版是一个委托监听，不是每格一个 handler）
+  function bgPaint(e) {
+    var grid = e.currentTarget, cell = e.target;
+    if (!cell || cell === grid || !cell.classList || !cell.classList.contains('dash-cell')) return;
+    cell.style.setProperty('--tint', BG_TINTS[(Math.random() * BG_TINTS.length) | 0]);
   }
-  // 尺寸：⚠️ 必须按 devicePixelRatio 缩放 canvas 的像素尺寸，否则高分屏上又糊又毛
-  function starResize() {
-    if (!starBox || !starDots || !starShoot) return;
-    starW = starBox.clientWidth; starH = starBox.clientHeight;
-    if (!starW || !starH) return;
-    starDPR = Math.min(window.devicePixelRatio || 1, 2);
-    [starDots, starShoot].forEach(function (c) {
-      c.width = Math.round(starW * starDPR);
-      c.height = Math.round(starH * starDPR);
-    });
-    starSeed();
-    starDraw(0, true);                     // 先画一帧静止的（resize 时不会白屏）
-  }
-  function starDraw(t, still) {
-    if (!starDots || !starShoot) return;
-    var col = starCol(starBox), acc = starAccent(starBox);
-
-    // ① 星点层：透明度用 sin 呼吸
-    var g = starDots.getContext('2d');
-    g.setTransform(starDPR, 0, 0, starDPR, 0, 0);
-    g.clearRect(0, 0, starW, starH);
-    g.fillStyle = col;
-    for (var i = 0; i < STARS.length; i++) {
-      var st = STARS[i];
-      var a = still ? 0.8 : 0.28 + 0.72 * (0.5 + 0.5 * Math.sin(t / 1000 * st.s + st.p));
-      g.globalAlpha = a;
-      g.beginPath(); g.arc(st.x, st.y, st.r, 0, Math.PI * 2); g.fill();
-    }
-    g.globalAlpha = 1;
-
-    // ② 流星层：尾迹用「头亮 → 尾透明」的线性渐变
-    var f = starShoot.getContext('2d');
-    f.setTransform(starDPR, 0, 0, starDPR, 0, 0);
-    f.clearRect(0, 0, starW, starH);
-    if (!SHOOT) return;
-    var o = SHOOT;
-    var tx = o.x - Math.cos(o.rad) * o.len;
-    var ty = o.y - Math.sin(o.rad) * o.len;
-    var lg = f.createLinearGradient(o.x, o.y, tx, ty);
-    lg.addColorStop(0, acc);
-    lg.addColorStop(1, 'transparent');
-    f.strokeStyle = lg; f.lineWidth = 2; f.lineCap = 'round';
-    f.globalAlpha = o.life;
-    f.beginPath(); f.moveTo(o.x, o.y); f.lineTo(tx, ty); f.stroke();
-    f.globalAlpha = 1;
-  }
-  function starTick(t) {
-    if (!starBox) { starRAF = null; return; }
-    var dt = starLast ? Math.min((t - starLast) / 1000, 0.05) : 0;
-    starLast = t;
-    if (SHOOT) {
-      SHOOT.dist += SHOOT.v * dt;
-      SHOOT.x += Math.cos(SHOOT.rad) * SHOOT.v * dt;
-      SHOOT.y += Math.sin(SHOOT.rad) * SHOOT.v * dt;
-      SHOOT.life = Math.max(0, 1 - SHOOT.dist / SHOOT.total);
-      if (SHOOT.life <= 0) SHOOT = null;
-    }
-    starDraw(t, false);
-    starRAF = requestAnimationFrame(starTick);
-  }
-  // 一颗流星：角度 25°±12°（往右下），速度 900±30%，飞完 (屏幕高×1.2 + 尾迹长) 就消失
-  function shootSpawn() {
-    var a = (SHOOT_ANGLE + (Math.random() - 0.5) * 24) * Math.PI / 180;
-    SHOOT = {
-      x: Math.random() * starW * 0.85,
-      y: -20 + Math.random() * starH * 0.35,
-      rad: a,
-      v: SHOOT_SPEED * (0.7 + Math.random() * 0.6),
-      len: SHOOT_LEN * (0.85 + Math.random() * 0.3),
-      dist: 0,
-      total: starH * 1.2 + SHOOT_LEN,
-      life: 1
-    };
-  }
-  function shootLoop() {
-    if (!starBox || starReduced()) return;
-    var d = SHOOT_DELAY * (0.4 + Math.random() * 1.2);      // ±60%
-    starTimer = setTimeout(function () {
-      if (!starBox || !document.body.contains(starBox)) return;
-      shootSpawn();
-      shootLoop();
-    }, d);
-  }
-  function starStart() {
-    starStop();
-    starBox = $('dashBg');
-    if (!starBox) return;
-    starDots = starBox.querySelector('canvas.dash-stars');
-    starShoot = starBox.querySelector('canvas.dash-shoot');
-    if (!starDots || !starShoot) return;
-    starResize();
-    if (starReduced()) { starDraw(0, true); return; }        // 减弱动效：只画一帧静态，不放流星
-    starLast = 0;
-    starRAF = requestAnimationFrame(starTick);
-    shootLoop();
-  }
-  function starStop() {
-    if (starRAF) { cancelAnimationFrame(starRAF); starRAF = null; }
-    if (starTimer) { clearTimeout(starTimer); starTimer = null; }
-    SHOOT = null; starBox = null; starDots = null; starShoot = null;
-  }
-  // 标签页切到后台就停（省电），切回来再继续；窗口改大小就重算尺寸
-  document.addEventListener('visibilitychange', function () {
-    if (!starBox) return;
-    if (document.hidden) {
-      if (starRAF) { cancelAnimationFrame(starRAF); starRAF = null; }
-    } else if (!starRAF && !starReduced()) {
-      starLast = 0;
-      starRAF = requestAnimationFrame(starTick);
-    }
-  });
-  window.addEventListener('resize', function () { if (starBox) starResize(); });
 
   // ---- 搜索框的 placeholder 轮播（照 Vanish Input 的真实行为）----
   // 原版：字段为空时每 3s 换一条；旧条「上滑 8px + 淡出」→ 换字 → 新条「从下 8px 滑入 + 淡入」，各 0.25s。
@@ -4447,15 +4345,15 @@
       if (ms.length) dashGo2(ms[0].k);
       else toast('没找到「' + q + '」—— 只按昵称和数据ID搜，换个关键词试试');
     });
-    // 背景：启动星空（每次进仪表盘/重渲染都重新起；starStart 内部先 starStop 清干净，不会叠加）
-    starStart();
+    // 背景：一个委托监听搞定全部格子
+    var grid = document.querySelector('#dashBg > .dash-grid');
+    if (grid) grid.addEventListener('pointerover', bgPaint);
     dvIdx = 0; dvBusy = false; dvHover = false; dvFocus = false;
     dvSync();
   }
   function dashPage2Html() {
     return '<div class="dash2">' +
-      '<div class="dash-bg" id="dashBg" aria-hidden="true">' +
-        '<canvas class="dash-stars"></canvas><canvas class="dash-shoot"></canvas></div>' +
+      '<div class="dash-bg" id="dashBg" aria-hidden="true">' + bgGridHtml() + '</div>' +
       '<div class="inner">' +
         '<form class="vform" id="dashWrap" autocomplete="off">' +
           '<input id="dashSearch" class="vinput" aria-label="搜索数据昵称 / 数据ID" value="' + esc(dashQ) + '">' +
